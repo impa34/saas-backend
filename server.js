@@ -12,7 +12,6 @@ import adminRoutes from "./routes/admin.routes.js"
 import path from "path";
 import bodyParser from "body-parser";
 import { fileURLToPath } from "url";
-const allowedOrigins = ["http://localhost:5173"];
 import { webhookHandler } from "./routes/payment.routes.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,8 +21,8 @@ app.post("/api/stripe/webhook", bodyParser.raw({ type: "application/json" }), we
 
 app.use(express.json());
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true, // por si usas cookies
+  origin: ["https://talochatbot.com", "https://www.talochatbot.com"],
+  credentials: true,
 }));
 
 app.use("/api/auth", authRoutes);

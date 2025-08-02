@@ -116,7 +116,7 @@ router.get("/callback", async (req, res) => {
     }
 
     res.redirect(
-      `http://localhost:5173/google-success.html?token=${token}&status=${user.status}`
+      `https://www.talochatbot.com/google-success.html?token=${token}&status=${user.status}`
     );
   } catch (err) {
     console.error("OAuth callback error:", err);
