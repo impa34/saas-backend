@@ -40,8 +40,8 @@ router.post("/create-checkout-session", auth, async (req, res) => {
     line_items: [{ price: priceId, quantity: 1 }],
     metadata: { userId, plan },
     success_url:
-      "http://localhost:5173/payment-success?session_id={CHECKOUT_SESSION_ID}",
-    cancel_url: "http://localhost:5173/payment-cancel",
+      "https://www.talochatbot.com/payment-success?session_id={CHECKOUT_SESSION_ID}",
+    cancel_url: "https://www.talochatbot.com/payment-cancel",
     client_reference_id: req.user.userId,
   });
 console.log("🎯 Datos de session:", session);
