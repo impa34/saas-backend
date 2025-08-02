@@ -1,0 +1,292 @@
+import express from "express";
+const router = express.Router();
+import Chatbot from "../models/Chatbot.js";
+import auth from "../middleware/auth.js";
+import { getGeminiReply } from "../utils/gemini.js";
+import { addCalendarEvent } from "../utils/calendar.js";
+import multer from "multer";
+import xlsx from "xlsx";
+import fs from "fs";
+import csv from "csv-parser";
+import { sendEmail } from "../utils/sendEmail.js";
+import Conversation from "../models/Conversation.js";
+import User from "../models/User.js";
+import { Parser } from "json2csv";
+
+const upload = multer({ dest: "uploads/" });
+
+router.post("/:id/upload", auth, upload.single("file"), async (req, res) => {
+  const file = req.file;
+
+  if (!file) return res.status(404).json({ message: "File not found" });
+
+  let data = [];
+
+  try {
+    if (file.mimetype === "text/csv") {
+      const rows = await new Promise((resolve, reject) => {
+        const results = [];
+        fs.createReadStream(file.path)
+          .pipe(csv())
+          .on("data", (row) => results.push(row))
+          .on("end", () => resolve(results))
+          .on("error", reject);
+      });
+      fs.unlinkSync(file.path);
+      data = rows;
+    } else {
+      const workbook = xlsx.readFile(file.path);
+      const sheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[sheetName];
+      data = xlsx.utils.sheet_to_json(sheet);
+    }
+    const bot = await Chatbot.findByIdAndUpdate(
+      req.params.id,
+      { dataset: data },
+      { new: true }
+    );
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
+
+    res.json({ message: "Excel processed", data });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Error uploading file" });
+  }
+});
+
+router.get("/:id", async (req, res) => {
+  try {
+    const chatbot = await Chatbot.findById(req.params.id);
+    if (!chatbot) return res.status(404).json({ message: "Chatbot not found" });
+
+    res.json(chatbot);
+  } catch (e) {
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.get("/", auth, async (req, res) => {
+  try {
+    const chatBots = await Chatbot.find({ user: req.user.userId }).populate(
+      "prompts"
+    );
+    res.json(chatBots);
+  } catch (e) {
+    res.status(500).json({ message: "Failed to fetch chatbots" });
+  }
+});
+
+router.post("/", auth, async (req, res) => {
+  const { name, prompts } = req.body;
+  const chatbot = await Chatbot.create({
+    user: req.user.userId,
+    name,
+    prompts,
+  });
+
+  res.status(201).json(chatbot);
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const deleted = await Chatbot.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ message: "Bot not found" });
+    }
+    res.json({ message: "Bot deleted" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Error deleting bot" });
+  }
+});
+router.post("/:id", async (req, res) => {
+  const bot = await Chatbot.findById(req.params.id);
+  if (!bot) return res.status(404).json({ message: "Bot not found" });
+  res.json(bot);
+});
+
+router.put("/:id", auth, async (req, res) => {
+  try {
+    const bot = await Chatbot.findById(req.params.id);
+    if (!bot) {
+      return res.status(404).json({ message: "Bot not found" });
+    }
+  
+    if (bot.user.toString() !== req.user.userId.toString()) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    const updated = await Chatbot.findOneAndUpdate(
+      { _id: req.params.id },
+      req.body,
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ message: "Bot not found" });
+
+    res.json(updated);
+    
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ message: "Error editing chatbot" });
+  }
+});
+
+router.post("/:id/reply", async (req, res) => {
+  try {
+    const { message } = req.body;
+    const bot = await Chatbot.findById(req.params.id).populate("user");
+    if (!bot) return res.status(404).json({ message: "Bot not found" });
+
+    await Conversation.create({
+      bot: bot._id,
+      sender: "user",
+      message,
+    });
+
+    await Conversation.create({
+      bot: bot._id,
+      sender: "bot",
+      message,
+    });
+
+    const reply = await getGeminiReply(message, bot.prompts, bot.dataset);
+
+    const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
+
+    if (citaOK) {
+      const owner = bot.user;
+      const ownerEmail = owner.email;
+
+      if (owner.status !== "full") {
+        if (owner.googleTokens) {
+          console.warn(
+            `Intento de uso indebido de Google Calendar por el usuario ${owner.email}`
+          );
+        }
+      } else if (owner.googleTokens) {
+        const link = await addCalendarEvent({
+          tokens: owner.googleTokens,
+          summary: "Cita desde chatbot",
+          description: `Mensaje: "${message}"\nBot: "${reply}"`,
+        });
+
+        await sendEmail({
+          to: ownerEmail,
+          subject: `Nueva cita agendada (${bot.name})`,
+          text: `Cita añadida a tu Google Calendar:\n${link}\n\nMensaje cliente:\n"${message}"`,
+        });
+      }
+
+      const emailRegex = /[\w.-]+@[\w.-]+\.\w+/g;
+      const userEmails = message.match(emailRegex);
+      if (userEmails) {
+        for (const userEmail of userEmails) {
+          await sendEmail({
+            to: userEmail,
+            subject: "Confirmación de tu cita",
+            text: `Tu cita ha sido confirmada. Detalles:\n${reply}`,
+          });
+        }
+      }
+    }
+
+    return res.json({ reply });
+  } catch (e) {
+    console.error("Error in /reply:", e);
+    return res.status(500).json({ message: "Couldn't generate message" });
+  }
+});
+
+router.get("/:id/conversations/export", async (req, res) => {
+  const { format = "csv" } = req.query;
+  const { id } = req.params;
+
+  try {
+    const conversations = await Conversation.find({ bot: id }).sort({
+      timestamp: 1,
+    });
+    if (format === "json") {
+      return res.json(conversations);
+    }
+    const fields = ["timestamp", "sender", "message"];
+    const parser = new Parser({ fields });
+    const csv = parser.parse(conversations);
+
+    res.header("Content-Type", "text/csv");
+    res.attachment(`chatbot-${id}-conversations.csv`);
+    return res.send(csv);
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+router.put("/:id/config", auth, async (req, res) => {
+  const { backgroundColor, textColor, font, fontSize } = req.body;
+  const bot = await Chatbot.findById(req.params.id);
+
+  if (!bot) return res.status(404).json({ message: "Bot not found" });
+  if (bot.user.toString() !== req.user.userId)
+    return res.status(403).json({ message: "Forbidden" });
+
+  bot.config = { backgroundColor, textColor, font, fontSize };
+  await bot.save();
+
+  res.json({ message: "Config saved" });
+});
+
+router.get("/:id/stats",auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(req.user.userId); // del token
+
+    if (user.status !== "pro" && user.status !== "full") {
+      return res.status(403).json({ message: "Pro feature only" });
+    }
+
+    const conversations = await Conversation.find({ bot: id });
+    if (!conversations.length) {
+      return res.json({
+        totalConversations: 0,
+        totalMessages: 0,
+        botMessages: 0,
+        userMessages: 0,
+        averageMessages: 0,
+        lastInteraction: null,
+      });
+    }
+    let totalMessages = 0;
+    let botMessages = 0;
+    let userMessages = 0;
+    let lastInteraction = null;
+
+    for (const convo of conversations) {
+      totalMessages += convo.message.length;
+
+      
+        if (convo.sender === "bot") botMessages++;
+        if (convo.sender === "user") userMessages++;
+
+        if (!lastInteraction || convo.timestamp > lastInteraction) {
+          lastInteraction = convo.timestamp;
+        }
+      ;
+    }
+
+    const averageMessages = totalMessages / conversations.length;
+
+    return res.json({
+      totalConversations: conversations.length,
+      totalMessages,
+      botMessages,
+      userMessages,
+      averageMessages,
+      lastInteraction,
+    });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+export default router;
