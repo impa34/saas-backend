@@ -12,6 +12,7 @@ import { sendEmail } from "../utils/sendEmail.js";
 import Conversation from "../models/Conversation.js";
 import User from "../models/User.js";
 import { Parser } from "json2csv";
+import { getCalendarEvents } from "../utils/getCalendarEvents.js";
 
 const upload = multer({ dest: "uploads/" });
 
@@ -137,65 +138,81 @@ router.post("/:id/reply", async (req, res) => {
     const bot = await Chatbot.findById(req.params.id).populate("user");
     if (!bot) return res.status(404).json({ message: "Bot not found" });
 
+    // Guardar mensaje del usuario
     await Conversation.create({
       bot: bot._id,
       sender: "user",
       message,
     });
 
+    // Obtener respuesta IA
+    const reply = await getGeminiReply(message, bot.prompts, bot.dataset);
+
+    // Buscar servicio y duración
+    let selectedService = null;
+    if (Array.isArray(bot.dataset)) {
+      selectedService = bot.dataset.find(row =>
+        row.servicio && message.toLowerCase().includes(row.servicio.toLowerCase())
+      );
+    }
+
+    // Detectar si la IA confirma una cita
+    const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
+
+    if (citaOK && selectedService && bot.user.googleTokens) {
+      const duration = parseInt(selectedService.duracion) || 30;
+      const buffer = 10;
+
+      // Usar parseDate para detectar fecha/hora real
+      const parsed = parseDate(message, duration, buffer);
+      if (!parsed) {
+        return res.json({
+          reply: `No pude detectar una fecha y hora válidas para la cita. ¿Puedes indicarla?`,
+        });
+      }
+
+      const { start, end } = parsed;
+
+      // Comprobar conflictos en Google Calendar
+      const events = await getCalendarEvents(bot.user.googleTokens, start, end);
+      if (events && events.length > 0) {
+        return res.json({
+          reply: `Lo siento, pero no hay disponibilidad para "${selectedService.servicio}" en ese horario. Por favor, sugiere otra hora.`,
+        });
+      }
+
+      // Crear evento en Google Calendar
+      const link = await addCalendarEvent({
+        tokens: bot.user.googleTokens,
+        summary: `Cita: ${selectedService.servicio}`,
+        description: `Mensaje: "${message}"\nBot: "${reply}"`,
+        durationMinutes: duration
+      });
+
+      // Enviar notificación por email al dueño del bot
+      await sendEmail({
+        to: bot.user.email,
+        subject: `Nueva cita agendada (${bot.name})`,
+        text: `Cita añadida a tu Google Calendar:\n${link}\n\nMensaje cliente:\n"${message}"`,
+      });
+    }
+
+    // Guardar respuesta del bot
     await Conversation.create({
       bot: bot._id,
       sender: "bot",
-      message,
+      message: reply,
     });
 
-    const reply = await getGeminiReply(message, bot.prompts, bot.dataset);
-
-    const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
-
-    if (citaOK) {
-      const owner = bot.user;
-      const ownerEmail = owner.email;
-
-      if (owner.status !== "full") {
-        if (owner.googleTokens) {
-          console.warn(
-            `Intento de uso indebido de Google Calendar por el usuario ${owner.email}`
-          );
-        }
-      } else if (owner.googleTokens) {
-        const link = await addCalendarEvent({
-          tokens: owner.googleTokens,
-          summary: "Cita desde chatbot",
-          description: `Mensaje: "${message}"\nBot: "${reply}"`,
-        });
-
-        await sendEmail({
-          to: ownerEmail,
-          subject: `Nueva cita agendada (${bot.name})`,
-          text: `Cita añadida a tu Google Calendar:\n${link}\n\nMensaje cliente:\n"${message}"`,
-        });
-      }
-
-      const emailRegex = /[\w.-]+@[\w.-]+\.\w+/g;
-      const userEmails = message.match(emailRegex);
-      if (userEmails) {
-        for (const userEmail of userEmails) {
-          await sendEmail({
-            to: userEmail,
-            subject: "Confirmación de tu cita",
-            text: `Tu cita ha sido confirmada. Detalles:\n${reply}`,
-          });
-        }
-      }
-    }
-
     return res.json({ reply });
+
   } catch (e) {
     console.error("Error in /reply:", e);
     return res.status(500).json({ message: "Couldn't generate message" });
   }
 });
+
+
 
 router.get("/:id/conversations/export", async (req, res) => {
   const { format = "csv" } = req.query;

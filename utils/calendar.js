@@ -1,7 +1,7 @@
 import { google } from "googleapis";
-import * as chrono from "chrono-node";
+import { parseDate } from "./dateParser.js";
 
-export async function addCalendarEvent({ tokens, summary, description }) {
+export async function addCalendarEvent({ tokens, summary, description, durationMinutes = 30 }) {
   const { client_id, client_secret, redirect_uris } = JSON.parse(process.env.GOOGLE_CREDENTIALS).web;
 
   const oAuth2Client = new google.auth.OAuth2(
@@ -11,25 +11,39 @@ export async function addCalendarEvent({ tokens, summary, description }) {
   );
 
   oAuth2Client.setCredentials(tokens);
-
   const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
 
   try {
-    const date = chrono.es.parseDate(description);
-    if (!date) {
+    const parsed = parseDate(description, durationMinutes, 10); // buffer 10 min
+    if (!parsed) {
       console.warn("❌ No se pudo interpretar una fecha válida en:", description);
       return null;
     }
 
+    // 1️⃣ Comprobar solapamientos
+    const existingEvents = await calendar.events.list({
+      calendarId: "primary",
+      timeMin: parsed.start.toISOString(),
+      timeMax: parsed.end.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime"
+    });
+
+    if (existingEvents.data.items.length > 0) {
+      console.warn("⚠️ Conflicto: ya existe un evento en ese rango.");
+      return null;
+    }
+
+    // 2️⃣ Crear evento
     const event = {
       summary,
       description,
       start: {
-        dateTime: date.toISOString(),
+        dateTime: parsed.start.toISOString(),
         timeZone: "Europe/Madrid",
       },
       end: {
-        dateTime: new Date(date.getTime() + 30 * 60 * 1000).toISOString(),
+        dateTime: parsed.end.toISOString(),
         timeZone: "Europe/Madrid",
       },
     };
@@ -39,10 +53,11 @@ export async function addCalendarEvent({ tokens, summary, description }) {
       requestBody: event,
     });
 
-    console.log("✅ Evento creado en Google Calendar:", response.data.htmlLink);
+    console.log("✅ Evento creado:", response.data.htmlLink);
     return response.data.htmlLink;
+
   } catch (error) {
-    console.error("❌ Error al crear el evento en Google Calendar:", error.response?.data || error.message);
+    console.error("❌ Error al crear el evento:", error.response?.data || error.message);
     return null;
   }
 }
