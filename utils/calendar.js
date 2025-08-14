@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { parseDate } from "./dateParser.js";
+import { parseDate } from "./parseDate.js";
 
 export async function addCalendarEvent({ tokens, summary, description, durationMinutes = 30 }) {
   const { client_id, client_secret, redirect_uris } = JSON.parse(process.env.GOOGLE_CREDENTIALS).web;
