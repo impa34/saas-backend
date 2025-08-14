@@ -147,52 +147,70 @@ router.post("/:id/reply", async (req, res) => {
     });
 
     // Obtener respuesta IA
-    const reply = await getGeminiReply(message, bot.prompts, bot.dataset);
+    let reply = await getGeminiReply(message, bot.prompts, bot.dataset);
 
-    // Buscar servicio y duración
+    // Buscar servicio en dataset
     let selectedService = null;
     if (Array.isArray(bot.dataset)) {
-      selectedService = bot.dataset.find(row =>
-        row.servicio && message.toLowerCase().includes(row.servicio.toLowerCase())
-      );
+      for (const row of bot.dataset) {
+        if (
+          row.servicio &&
+          message.toLowerCase().includes(row.servicio.toLowerCase())
+        ) {
+          selectedService = row;
+          break;
+        }
+      }
     }
 
-    // Detectar si la IA confirma una cita
+    // Si el usuario pregunta por precio/duración del servicio
+    if (selectedService) {
+      const priceRegex = /precio|cuesta|cost/i;
+      const durationRegex = /duración|dura|tiempo/i;
+
+      if (priceRegex.test(message)) {
+        reply = `${selectedService.servicio} cuesta ${selectedService.precio} € y dura ${selectedService.duracion} minutos.`;
+      } else if (durationRegex.test(message)) {
+        reply = `${selectedService.servicio} dura ${selectedService.duracion} minutos y cuesta ${selectedService.precio} €.`;
+      }
+    }
+
+    // Detectar cita
     const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
-
     if (citaOK && selectedService && bot.user.googleTokens) {
+      const owner = bot.user;
       const duration = parseInt(selectedService.duracion) || 30;
-      const buffer = 10;
+      const buffer = 10; // minutos de buffer entre citas
 
-      // Usar parseDate para detectar fecha/hora real
-      const parsed = parseDate(message, duration, buffer);
-      if (!parsed) {
+      // Detectar fecha/hora de la cita
+      const { start, end } = parseDate(message);
+      const startTime = start;
+      const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
+
+      // Consultar Google Calendar para evitar solapamientos considerando capacidad
+      const events = await getCalendarEvents(
+        owner.googleTokens,
+        startTime,
+        endTime,
+        selectedService.servicio
+      );
+
+      if (events && events.length >= (selectedService.capacidad || 1)) {
         return res.json({
-          reply: `No pude detectar una fecha y hora válidas para la cita. ¿Puedes indicarla?`,
+          reply: `Lo siento, no hay disponibilidad para "${selectedService.servicio}" en ese horario. Por favor, sugiere otra hora.`,
         });
       }
 
-      const { start, end } = parsed;
-
-      // Comprobar conflictos en Google Calendar
-      const events = await getCalendarEvents(bot.user.googleTokens, start, end);
-      if (events && events.length > 0) {
-        return res.json({
-          reply: `Lo siento, pero no hay disponibilidad para "${selectedService.servicio}" en ese horario. Por favor, sugiere otra hora.`,
-        });
-      }
-
-      // Crear evento en Google Calendar
+      // Crear evento
       const link = await addCalendarEvent({
-        tokens: bot.user.googleTokens,
+        tokens: owner.googleTokens,
         summary: `Cita: ${selectedService.servicio}`,
         description: `Mensaje: "${message}"\nBot: "${reply}"`,
-        durationMinutes: duration
+        durationMinutes: duration,
       });
 
-      // Enviar notificación por email al dueño del bot
       await sendEmail({
-        to: bot.user.email,
+        to: owner.email,
         subject: `Nueva cita agendada (${bot.name})`,
         text: `Cita añadida a tu Google Calendar:\n${link}\n\nMensaje cliente:\n"${message}"`,
       });
@@ -206,12 +224,12 @@ router.post("/:id/reply", async (req, res) => {
     });
 
     return res.json({ reply });
-
   } catch (e) {
     console.error("Error in /reply:", e);
     return res.status(500).json({ message: "Couldn't generate message" });
   }
 });
+
 
 
 
