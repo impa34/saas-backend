@@ -38,10 +38,10 @@ router.get("/", async (req, res) => {
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
+        "openid"
       ],
       prompt: "consent",
       state: userId,
-      include_granted_scopes: true,
     });
     console.log(authUrl)
     res.redirect(authUrl);
