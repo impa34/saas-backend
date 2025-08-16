@@ -43,7 +43,7 @@ router.get("/", async (req, res) => {
       prompt: "consent",
       state: userId,
     });
-    console.log(authUrl)
+    console.log("URL de autorizacion", authUrl)
     res.redirect(authUrl);
   } catch (error) {
     console.error("Auth route error:", error);
