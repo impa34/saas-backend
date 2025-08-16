@@ -42,9 +42,8 @@ router.get("/", async (req, res) => {
       prompt: "consent",
       state: userId,
       include_granted_scopes: true,
-      integration_phase: "testing_limited" 
     });
-
+    console.log(authUrl)
     res.redirect(authUrl);
   } catch (error) {
     console.error("Auth route error:", error);
