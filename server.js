@@ -9,6 +9,7 @@ import googleRoutes from "./routes/googleAuth.routes.js";
 import paymentRoutes from "./routes/payment.routes.js"
 import userRoutes from "./routes/user.routes.js"
 import adminRoutes from "./routes/admin.routes.js"
+import checkoutRoutes from "./routes/checkout.routes.js"
 import path from "path";
 import bodyParser from "body-parser";
 import { fileURLToPath } from "url";
@@ -29,6 +30,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/google-auth", googleRoutes);
 app.use("/api/chatbots", chatRoutes);
 app.use("/api/stripe", paymentRoutes);
+app.use("/api/paypal", checkoutRoutes);
 app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
 
