@@ -8,23 +8,11 @@ import crypto from "crypto";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+router.get("/", (req, res) => {
   try {
-    const token = req.query.auth;
-    if (!token) return res.status(401).send("Token is required");
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.userId;
-
     const { client_id, client_secret, redirect_uris } = JSON.parse(
       process.env.GOOGLE_CREDENTIALS
     ).web;
-
-    await google.registerTestingDevice({
-  projectId: 'aqueous-cargo-465512-d4',
-  userId: userId,
-  deviceType: 'web_server'
-});
 
     const oAuth2Client = new google.auth.OAuth2(
       client_id,
@@ -34,20 +22,20 @@ router.get("/", async (req, res) => {
 
     const authUrl = oAuth2Client.generateAuthUrl({
       access_type: "offline",
+      prompt: "consent",
       scope: [
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
-        "openid"
+        "openid",
       ],
-      prompt: "consent",
-      state: userId,
     });
-    console.log("URL de autorizacion", authUrl)
+
+    console.log("🔗 URL de autorización:", authUrl);
     res.redirect(authUrl);
-  } catch (error) {
-    console.error("Auth route error:", error);
-    res.status(401).send("Invalid or missing token");
+  } catch (err) {
+    console.error("Auth route error:", err);
+    res.status(500).send("Error generating auth URL");
   }
 });
 
