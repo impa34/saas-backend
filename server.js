@@ -11,6 +11,7 @@ import userRoutes from "./routes/user.routes.js"
 import adminRoutes from "./routes/admin.routes.js"
 import checkoutRoutes from "./routes/checkout.routes.js"
 import path from "path";
+import healthRoutes from "./routes/health.routes.js"
 import bodyParser from "body-parser";
 import { fileURLToPath } from "url";
 import { webhookHandler } from "./routes/payment.routes.js";
@@ -33,6 +34,7 @@ app.use("/api/stripe", paymentRoutes);
 app.use("/api/paypal", checkoutRoutes);
 app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
+app.use("/health", healthRoutes)
 
 
 
@@ -42,6 +44,9 @@ app.use(express.static(path.join(__dirname, "../client/public")));
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname,"..","client", "dist", "index.html"));
 });
+
+
+
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
