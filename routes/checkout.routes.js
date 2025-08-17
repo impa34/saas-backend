@@ -1,7 +1,10 @@
 import express from "express";
 import fetch from "node-fetch";
 import auth from "../middleware/auth.js"
+import User from "../models/User.js";
+
 const router = express.Router();
+
 
 router.post("/create-order", async (req, res) => {
   const { plan } = req.body;
@@ -61,7 +64,11 @@ router.post("/create-order", async (req, res) => {
     const orderData = await orderRes.json();
 
     // Buscar approval_url y devolverlo al front
-    const approvalUrl = orderData.links.find((l) => l.rel === "approve").href;
+   const approvalUrl = orderData?.links?.find((l) => l.rel === "approve")?.href;
+if (!approvalUrl) {
+  console.error("❌ No se encontró approvalUrl", orderData);
+  return res.status(400).json({ error: "No se pudo crear la orden" });
+}
 
     res.json({ approvalUrl });
   } catch (err) {
