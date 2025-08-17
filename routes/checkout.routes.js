@@ -52,8 +52,8 @@ router.post("/create-order", async (req, res) => {
           brand_name: "Tu SaaS",
           landing_page: "LOGIN",
           user_action: "PAY_NOW",
-          return_url: "https://www.talochatbot.com/paypal-success", // tu frontend
-          cancel_url: "https://www.talochatbot.com/pricing",
+          return_url: "https://www.talochatbot.com/payment-success", // tu frontend
+          cancel_url: "https://www.talochatbot.com/payment-cancel",
         },
       }),
     });
