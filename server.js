@@ -34,7 +34,7 @@ app.use("/api/stripe", paymentRoutes);
 app.use("/api/paypal", checkoutRoutes);
 app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
-app.use("/health", healthRoutes)
+app.use("/", healthRoutes)
 
 
 
