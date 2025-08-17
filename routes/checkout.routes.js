@@ -109,9 +109,12 @@ router.post("/capture-order", auth, async (req, res) => {
 
     const captureData = await captureRes.json();
 
-    if (captureData.status !== "COMPLETED") {
-      return res.status(400).json({ error: "El pago no fue completado" });
-    }
+  const captureStatus =
+  captureData?.purchase_units?.[0]?.payments?.captures?.[0]?.status;
+
+if (captureStatus !== "COMPLETED") {
+  return res.status(400).json({ error: "El pago no fue completado", captureData });
+}
 
     // ✅ Actualizar usuario en BD
     const user = await User.findById(req.user.userId);
