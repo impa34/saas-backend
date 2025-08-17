@@ -7,9 +7,9 @@ const router = express.Router();
 
 
 router.post("/create-order", async (req, res) => {
-  const { plan } = req.body;
+  const { status } = req.body;
 
-  // Definir precios por plan
+  // Definir precios por status
   const prices = {
     pro: "9.00",
     full: "19.00",
@@ -46,13 +46,13 @@ router.post("/create-order", async (req, res) => {
           {
             amount: {
               currency_code: "EUR",
-              value: prices[plan],
+              value: prices[status],
             },
-            description: `${plan} subscription`,
+            description: `${status} subscription`,
           },
         ],
         application_context: {
-          brand_name: "Tu SaaS",
+          brand_name: "Talobot",
           landing_page: "LOGIN",
           user_action: "PAY_NOW",
           return_url: "https://www.talochatbot.com/payment-success", // tu frontend
@@ -78,7 +78,7 @@ if (!approvalUrl) {
 });
 
 router.post("/capture-order", auth, async (req, res) => {
-  const { orderId, plan } = req.body;
+  const { orderId, status } = req.body;
 
   const prices = { pro: "9.00", full: "19.00", lifetime: "79.00" };
 
@@ -116,10 +116,10 @@ router.post("/capture-order", auth, async (req, res) => {
 
     // ✅ Actualizar usuario en BD
     const user = await User.findById(req.user.userId);
-    user.status = plan; // pro | full | lifetime
+    user.status = status; // pro | full | lifetime
     await user.save();
 
-    res.json({ success: true, newStatus: plan });
+    res.json({ success: true, newStatus: status });
   } catch (err) {
     console.error("❌ PayPal capture-order error:", err);
     res.status(500).json({ error: "No se pudo capturar el pago" });
