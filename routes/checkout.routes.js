@@ -103,8 +103,9 @@ router.post("/capture-order", auth, async (req, res) => {
       `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderId}/capture`,
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${access_token}` },
-        "Content-Type": "application/json",
+        headers: { Authorization: `Bearer ${access_token}`,
+        "Content-Type": "application/json", },
+        
         body:JSON.stringify({})
       },
       
