@@ -70,4 +70,54 @@ router.post("/create-order", async (req, res) => {
   }
 });
 
+router.post("/capture-order", auth, async (req, res) => {
+  const { orderId, plan } = req.body;
+
+  const prices = { pro: "9.00", full: "19.00", lifetime: "79.00" };
+
+  try {
+    // Obtener access token de PayPal
+    const auth = Buffer.from(
+      process.env.PAYPAL_CLIENT_ID + ":" + process.env.PAYPAL_SECRET
+    ).toString("base64");
+
+    const authRes = await fetch("https://api-m.sandbox.paypal.com/v1/oauth2/token", {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+    });
+
+    const { access_token } = await authRes.json();
+
+    // Capturar orden en PayPal
+    const captureRes = await fetch(
+      `https://api-m.sandbox.paypal.com/v2/checkout/orders/${orderId}/capture`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${access_token}` },
+      }
+    );
+
+    const captureData = await captureRes.json();
+
+    if (captureData.status !== "COMPLETED") {
+      return res.status(400).json({ error: "El pago no fue completado" });
+    }
+
+    // ✅ Actualizar usuario en BD
+    const user = await User.findById(req.user.userId);
+    user.status = plan; // pro | full | lifetime
+    await user.save();
+
+    res.json({ success: true, newStatus: plan });
+  } catch (err) {
+    console.error("❌ PayPal capture-order error:", err);
+    res.status(500).json({ error: "No se pudo capturar el pago" });
+  }
+});
+
+
 export default router;
