@@ -45,7 +45,7 @@ router.get("/callback", async (req, res) => {
 
     if (error) {
       // El usuario canceló la autorización
-      return res.redirect("/login"); // O la ruta que uses para login
+      return res.redirect("https://www.talochatbot.com/login"); // O la ruta que uses para login
     }
      if (!code) {
       return res.status(400).send("No authorization code provided");
