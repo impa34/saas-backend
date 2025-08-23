@@ -19,12 +19,16 @@ router.post("/webhook", async (req, res) => {
     const text = message.text;
 
     // Buscar bot asociado
-    let bot = await Chatbot.findOne({ telegramChatId: chatId }).populate("user prompts");
-    if (!bot) {
-      // Si no hay bot asignado, puedes usar un bot por defecto
-      bot = await Chatbot.findOne({}); 
-      if (!bot) return res.sendStatus(200);
-    }
+let bot = await Chatbot.findOne({ telegramChatId: chatId });
+if (!bot) {
+    // Toma un bot por defecto del usuario que quieres probar
+    bot = await Chatbot.findOne({ user: userId }).populate("user prompts");
+
+    // Asocia este chat de Telegram con el bot
+    bot.telegramChatId = chatId;
+    await bot.save();
+}
+
 
     // Guardar mensaje del usuario
     await Conversation.create({ bot: bot._id, sender: "user", message: text });

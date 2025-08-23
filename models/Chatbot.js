@@ -17,7 +17,7 @@ const chatbotSchema = new mongoose.Schema({
     telegramChatId:{
         type:String,
         required:true,
-        unique:true
+        sparse: true
     }
 })
 
