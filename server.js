@@ -36,7 +36,12 @@ app.use("/api/paypal", checkoutRoutes);
 app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
 app.use("/", healthRoutes)
-app.use("/telegram", telegramRoutes);
+app.post("/telegram/webhook", (req, res) => {
+  console.log("Mensaje recibido de Telegram:", JSON.stringify(req.body, null, 2));
+
+  // Responder rápido (Telegram exige respuesta 200 en < 10s)
+  res.sendStatus(200);
+});
 
 
 app.use(express.static(path.join(__dirname, "../client/dist")));
