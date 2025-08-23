@@ -13,6 +13,11 @@ const chatbotSchema = new mongoose.Schema({
         textColor:{type:String, default:"#000000"},
         font:{type:String, default:"Poppins"},
         fontSize:{type:Number, default:14}
+    },
+    telegramChatId:{
+        type:String,
+        required:true,
+        unique:true
     }
 })
 
