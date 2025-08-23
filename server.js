@@ -9,6 +9,7 @@ import googleRoutes from "./routes/googleAuth.routes.js";
 import paymentRoutes from "./routes/payment.routes.js"
 import userRoutes from "./routes/user.routes.js"
 import adminRoutes from "./routes/admin.routes.js"
+import telegramRoutes from "./routes/telegram.js";
 import checkoutRoutes from "./routes/checkout.routes.js"
 import path from "path";
 import healthRoutes from "./routes/health.routes.js"
@@ -35,7 +36,7 @@ app.use("/api/paypal", checkoutRoutes);
 app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
 app.use("/", healthRoutes)
-
+app.use("/telegram", telegramRoutes);
 
 
 app.use(express.static(path.join(__dirname, "../client/dist")));
