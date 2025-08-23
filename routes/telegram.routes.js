@@ -1,4 +1,4 @@
-// routes/telegram.js
+// routes/telegram.routes.js
 import express from "express";
 import axios from "axios";
 import Chatbot from "../models/Chatbot.js";
@@ -17,7 +17,7 @@ router.post("/webhook", async (req, res) => {
   const text = message.text;
 
   // Buscar bot asociado
-  const bot = await Chatbot.findOne({ telegramChatId: chatId }).populate("user prompts");
+  const bot = await Chatbot.findOne({}).populate("user prompts");
   if (!bot) return res.sendStatus(200);
 
   // Guardar mensaje del usuario
