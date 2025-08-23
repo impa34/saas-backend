@@ -1,6 +1,9 @@
 // routes/telegram.js
 import express from "express";
 import axios from "axios";
+import Chatbot from "../models/Chatbot.js";
+import { getGeminiReply } from "../utils/gemini.js";
+import Conversation from "../models/Conversation.js";
 
 const router = express.Router();
 
@@ -8,27 +11,50 @@ const router = express.Router();
 // Aquí luego lo puedes relacionar con tu modelo de Chatbot
 router.post("/webhook", async (req, res) => {
   const message = req.body.message;
-
-  if (!message || !message.chat || !message.text) {
-    return res.sendStatus(200); // ignora si no es mensaje válido
-  }
+  if (!message || !message.chat || !message.text) return res.sendStatus(200);
 
   const chatId = message.chat.id;
   const text = message.text;
 
-  // Aquí podrías conectar con tu lógica de chatbot
-  const reply = `Recibí tu mensaje: "${text}" 🚀`;
+  // Buscar bot asociado
+  const bot = await Chatbot.findOne({ telegramChatId: chatId }).populate("user prompts");
+  if (!bot) return res.sendStatus(200);
 
-  // Responder al usuario en Telegram
+  // Guardar mensaje del usuario
+  await Conversation.create({ bot: bot._id, sender: "user", message: text });
+
+  // Obtener respuesta IA
+  let reply = await getGeminiReply(text, bot.prompts, bot.dataset);
+
+  // Revisar dataset de servicios
+  if (Array.isArray(bot.dataset)) {
+    const selectedService = bot.dataset.find(row =>
+      row.servicio && text.toLowerCase().includes(row.servicio.toLowerCase())
+    );
+
+    if (selectedService) {
+      const priceRegex = /precio|cuesta|cost/i;
+      const durationRegex = /duración|dura|tiempo/i;
+
+      if (priceRegex.test(text)) {
+        reply = `${selectedService.servicio} cuesta ${selectedService.precio} € y dura ${selectedService.duracion} minutos.`;
+      } else if (durationRegex.test(text)) {
+        reply = `${selectedService.servicio} dura ${selectedService.duracion} minutos y cuesta ${selectedService.precio} €.`;
+      }
+    }
+  }
+
+  // Guardar respuesta del bot
+  await Conversation.create({ bot: bot._id, sender: "bot", message: reply });
+
+  // Enviar respuesta a Telegram
   await axios.post(
     `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-    {
-      chat_id: chatId,
-      text: reply,
-    }
+    { chat_id: chatId, text: reply }
   );
 
   res.sendStatus(200);
 });
+
 
 export default router;
