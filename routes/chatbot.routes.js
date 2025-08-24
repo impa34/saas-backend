@@ -6,7 +6,6 @@ import { getGeminiReply } from "../utils/gemini.js";
 import { addCalendarEvent } from "../utils/calendar.js";
 import multer from "multer";
 import xlsx from "xlsx";
-import auth from "../middleware/auth.js"
 import fs from "fs";
 import csv from "csv-parser";
 import { sendEmail } from "../utils/sendEmail.js";
