@@ -6,6 +6,7 @@ import { getGeminiReply } from "../utils/gemini.js";
 import { addCalendarEvent } from "../utils/calendar.js";
 import multer from "multer";
 import xlsx from "xlsx";
+import auth from "../middleware/auth.js"
 import fs from "fs";
 import csv from "csv-parser";
 import { sendEmail } from "../utils/sendEmail.js";
@@ -106,6 +107,33 @@ router.post("/:id", async (req, res) => {
   if (!bot) return res.status(404).json({ message: "Bot not found" });
   res.json(bot);
 });
+
+// Guardar el token de Telegram
+router.post("/:id/integrations/telegram", auth, async (req, res) => {
+  try {
+    const { token } = req.body;
+    const chatbotId = req.params.id;
+
+    if (!token) {
+      return res.status(400).json({ error: "El token de Telegram es obligatorio" });
+    }
+
+    const chatbot = await Chatbot.findOne({ _id: chatbotId, owner: req.user.id });
+    if (!chatbot) {
+      return res.status(404).json({ error: "Chatbot no encontrado" });
+    }
+
+    chatbot.telegramToken = token;
+    await chatbot.save();
+
+    res.json({ success: true, message: "Token de Telegram guardado correctamente" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Error al guardar la integración con Telegram" });
+  }
+});
+
+
 
 router.put("/:id", auth, async (req, res) => {
   try {

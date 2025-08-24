@@ -14,11 +14,7 @@ const chatbotSchema = new mongoose.Schema({
         font:{type:String, default:"Poppins"},
         fontSize:{type:Number, default:14}
     },
-    telegramChatId:{
-        type:String,
-        required:true,
-        sparse: true
-    }
+   telegramToken: { type: String, default: null },
 })
 
 export default mongoose.model("Chatbot", chatbotSchema)
