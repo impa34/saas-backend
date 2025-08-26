@@ -1,6 +1,7 @@
 import express from "express";
 const router = express.Router();
 import Chatbot from "../models/Chatbot.js";
+import axios from "axios"
 import auth from "../middleware/auth.js";
 import { getGeminiReply } from "../utils/gemini.js";
 import { addCalendarEvent } from "../utils/calendar.js";
