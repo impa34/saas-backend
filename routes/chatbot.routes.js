@@ -108,30 +108,27 @@ router.post("/:id", async (req, res) => {
 });
 
 // Guardar el token de Telegram
-router.post("/:id/integrations/telegram", async (req, res) => {
+router.post("/:id/integrations/telegram", auth, async (req, res) => {
   try {
-    const { botId } = req.params;
     const { token } = req.body;
+    const chatbotId = req.params.id;
 
-    if (!token) return res.status(400).json({ error: "Token requerido" });
-
-    // Validar token con Telegram
-    const check = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
-
-    if (!check.data.ok) {
-      return res.status(400).json({ error: "Token inválido" });
+    if (!token) {
+      return res.status(400).json({ error: "El token de Telegram es obligatorio" });
     }
 
-    const bot = await Chatbot.findById(botId);
-    if (!bot) return res.status(404).json({ error: "Bot no encontrado" });
+    const chatbot = await Chatbot.findOne({ _id: chatbotId, owner: req.user.id });
+    if (!chatbot) {
+      return res.status(404).json({ error: "Chatbot no encontrado" });
+    }
 
-    bot.telegramToken = token;
-    await bot.save();
+    chatbot.telegramToken = token;
+    await chatbot.save();
 
-    res.json({ message: "✅ Token guardado correctamente", bot });
+    res.json({ success: true, message: "Token de Telegram guardado correctamente" });
   } catch (err) {
-    console.error("Error guardando token:", err.response?.data || err.message);
-    res.status(500).json({ error: "No se pudo validar/guardar el token" });
+    console.error(err);
+    res.status(500).json({ error: "Error al guardar la integración con Telegram" });
   }
 });
 
