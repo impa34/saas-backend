@@ -16,6 +16,7 @@ const router = express.Router();
  */
 router.post("/webhook/:chatbotId", async (req, res) => {
   try {
+    console.log("Mensaje recibido:", JSON.stringify(req.body, null, 2));
     const chatbotId = req.params.chatbotId;
     const message = req.body.message;
 
@@ -30,7 +31,10 @@ router.post("/webhook/:chatbotId", async (req, res) => {
   console.error("Bot no encontrado o _id inválido:", bot);
   return res.sendStatus(500);
 }
-
+if (!bot.telegramToken) {
+  console.error("No hay token de Telegram para este bot");
+  return res.sendStatus(200);
+}
     // Guardar el chatId de Telegram asociado al cliente (solo la primera vez)
     if (!bot.telegramChatId) {
       bot.telegramChatId = chatId;
@@ -39,6 +43,11 @@ router.post("/webhook/:chatbotId", async (req, res) => {
 
     // Guardar mensaje del usuario
     await Conversation.create({ bot: bot._id, sender: "user", message: text });
+    console.log("Enviando mensaje a Telegram:", {
+  chat_id: chatId,
+  text: reply,
+  token: bot.telegramToken
+});
 
     // Obtener respuesta IA
     let reply = await getGeminiReply(text, bot.prompts, bot.dataset);
