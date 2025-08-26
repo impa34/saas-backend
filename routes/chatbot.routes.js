@@ -117,9 +117,10 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
     if (!token) {
       return res.status(400).json({ error: "El token de Telegram es obligatorio" });
     }
-
+console.log("Token recibido:", token)
     // Validar el token con Telegram antes de guardarlo
-    const response = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
+const tokenTrimmed = token.trim();
+const response = await axios.get(`https://api.telegram.org/bot${tokenTrimmed}/getMe`);
 
     if (!response.data.ok) {
       return res.status(400).json({ error: "Token de Telegram inválido" });

@@ -26,10 +26,10 @@ router.post("/webhook/:chatbotId", async (req, res) => {
 
     // Buscar bot por su _id (lo tienes en la URL del webhook)
     const bot = await Chatbot.findById(chatbotId).populate("user");
-    if (!bot) {
-      console.error("❌ Bot no encontrado para webhook:", chatbotId);
-      return res.sendStatus(404);
-    }
+ if (!bot || !bot._id) {
+  console.error("Bot no encontrado o _id inválido:", bot);
+  return res.sendStatus(500);
+}
 
     // Guardar el chatId de Telegram asociado al cliente (solo la primera vez)
     if (!bot.telegramChatId) {
