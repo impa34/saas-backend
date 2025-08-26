@@ -10,26 +10,32 @@ import { sendEmail } from "../utils/sendEmail.js";
 
 const router = express.Router();
 
-router.post("/webhook", async (req, res) => {
+/**
+ * Webhook de Telegram adaptado:
+ * Cada bot de tu sistema tendrá su propio webhook: /webhook/:chatbotId
+ */
+router.post("/webhook/:chatbotId", async (req, res) => {
   try {
+    const chatbotId = req.params.chatbotId;
     const message = req.body.message;
+
     if (!message || !message.chat || !message.text) return res.sendStatus(200);
 
     const chatId = message.chat.id;
     const text = message.text;
 
-    // Buscar bot asociado
-let bot = await Chatbot.findOne({ telegramChatId: chatId });
-if (!bot) {
-    // Toma un bot por defecto del usuario que quieres probar
-    bot = await Chatbot.findOne().populate("user prompts");
+    // Buscar bot por su _id (lo tienes en la URL del webhook)
+    const bot = await Chatbot.findById(chatbotId).populate("user");
+    if (!bot) {
+      console.error("❌ Bot no encontrado para webhook:", chatbotId);
+      return res.sendStatus(404);
+    }
 
-
-    // Asocia este chat de Telegram con el bot
-    bot.telegramChatId = chatId;
-    await bot.save();
-}
-
+    // Guardar el chatId de Telegram asociado al cliente (solo la primera vez)
+    if (!bot.telegramChatId) {
+      bot.telegramChatId = chatId;
+      await bot.save();
+    }
 
     // Guardar mensaje del usuario
     await Conversation.create({ bot: bot._id, sender: "user", message: text });
@@ -64,11 +70,11 @@ if (!bot) {
       const buffer = 10; // minutos de buffer entre citas
 
       // Detectar fecha/hora de la cita
-      const { start, end } = parseDate(text);
+      const { start } = parseDate(text);
       const startTime = start;
       const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
 
-      // Consultar Google Calendar para evitar solapamientos considerando capacidad
+      // Consultar Google Calendar
       const events = await getCalendarEvents(
         owner.googleTokens,
         startTime,
@@ -88,7 +94,7 @@ if (!bot) {
           startTime,
         });
 
-        // Enviar email al propietario
+        // Notificar al dueño por email
         await sendEmail({
           to: owner.email,
           subject: `Nueva cita agendada (${bot.name})`,
@@ -100,11 +106,11 @@ if (!bot) {
     // Guardar respuesta del bot
     await Conversation.create({ bot: bot._id, sender: "bot", message: reply });
 
-    // Enviar respuesta a Telegram
-   await axios.post(
-  `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
-  { chat_id: chatId, text: reply }
-);
+    // Enviar respuesta a Telegram usando el token de este bot
+    await axios.post(
+      `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
+      { chat_id: chatId, text: reply }
+    );
 
     res.sendStatus(200);
   } catch (e) {

@@ -131,9 +131,15 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
     }
 
     // Guardamos el token validado
-    chatbot.telegramToken = token;
-    chatbot.telegramBotUsername = response.data.result.username; // opcional, útil para debug
-    await chatbot.save();
+chatbot.telegramToken = token;
+chatbot.telegramBotUsername = response.data.result.username;
+await chatbot.save();
+
+// Configuramos webhook para este bot
+await axios.post(
+  `https://api.telegram.org/bot${token}/setWebhook`,
+  { url: `https://www.talochatbot.com/webhook/${chatbot._id}` }
+);
 
     res.json({
       success: true,
