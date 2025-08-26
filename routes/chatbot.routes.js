@@ -117,11 +117,9 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
     if (!token) {
       return res.status(400).json({ error: "El token de Telegram es obligatorio" });
     }
-console.log("Token recibido:", token)
-    // Validar el token con Telegram antes de guardarlo
-const tokenTrimmed = token.trim();
-const response = await axios.get(`https://api.telegram.org/bot${tokenTrimmed}/getMe`);
 
+    // Validar el token con Telegram
+    const response = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
     if (!response.data.ok) {
       return res.status(400).json({ error: "Token de Telegram inválido" });
     }
@@ -131,22 +129,26 @@ const response = await axios.get(`https://api.telegram.org/bot${tokenTrimmed}/ge
       return res.status(404).json({ error: "Chatbot no encontrado" });
     }
 
-    // Guardamos el token validado
-chatbot.telegramToken = token;
-chatbot.telegramBotUsername = response.data.result.username;
-await chatbot.save();
+    // Guardamos el token y username
+    chatbot.telegramToken = token;
+    chatbot.telegramBotUsername = response.data.result.username;
+    await chatbot.save();
 
-// Configuramos webhook para este bot
-await axios.post(
-  `https://api.telegram.org/bot${token}/setWebhook`,
-  { url: `https://www.talochatbot.com/webhook/${chatbot._id}` }
-);
+    // Registrar webhook automáticamente
+    const webhookUrl = `https://saas-backend-xrkb.onrender.com/api/telegram/webhook`;
+    const webhookRes = await axios.get(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}`);
+
+    if (!webhookRes.data.ok) {
+      return res.status(500).json({ error: "No se pudo registrar el webhook en Telegram" });
+    }
 
     res.json({
       success: true,
-      message: "Token de Telegram guardado correctamente",
+      message: "Token de Telegram guardado y webhook registrado correctamente",
       bot: response.data.result,
+      webhook: webhookRes.data.result
     });
+
   } catch (err) {
     console.error("Error al guardar token de Telegram:", err.message);
     res.status(500).json({ error: "Error al guardar la integración con Telegram" });

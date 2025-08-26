@@ -111,7 +111,7 @@ router.post("/webhook/:chatbotId", async (req, res) => {
       `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
       { chat_id: chatId, text: reply }
     );
-
+console.log("Mensaje recibido:", req.body);
     res.sendStatus(200);
   } catch (e) {
     console.error("Error en webhook Telegram:", e);
