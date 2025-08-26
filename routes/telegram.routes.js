@@ -22,7 +22,8 @@ router.post("/webhook", async (req, res) => {
 let bot = await Chatbot.findOne({ telegramChatId: chatId });
 if (!bot) {
     // Toma un bot por defecto del usuario que quieres probar
-    bot = await Chatbot.findOne({ user: userId }).populate("user prompts");
+    bot = await Chatbot.findOne().populate("user prompts");
+
 
     // Asocia este chat de Telegram con el bot
     bot.telegramChatId = chatId;
@@ -100,10 +101,10 @@ if (!bot) {
     await Conversation.create({ bot: bot._id, sender: "bot", message: reply });
 
     // Enviar respuesta a Telegram
-    await axios.post(
-      `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
-      { chat_id: chatId, text: reply }
-    );
+   await axios.post(
+  `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
+  { chat_id: chatId, text: reply }
+);
 
     res.sendStatus(200);
   } catch (e) {
