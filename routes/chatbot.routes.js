@@ -108,7 +108,7 @@ router.post("/:id", async (req, res) => {
 });
 
 // Guardar el token de Telegram
-router.post("/:botId/integrations/telegram", async (req, res) => {
+router.post("/:id/integrations/telegram", async (req, res) => {
   try {
     const { botId } = req.params;
     const { token } = req.body;
