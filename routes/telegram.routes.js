@@ -43,8 +43,20 @@ router.post("/webhook/:chatbotId", async (req, res) => {
     
     console.log("Bot encontrado:", bot.name);
 
-    // Guardar mensaje del usuario
-    await Conversation.create({ bot: bot._id, sender: "user", message: text });
+    // Guardar el chatId de Telegram
+    if (!bot.telegramChatId) {
+      bot.telegramChatId = chatId;
+      await bot.save();
+    }
+
+    // Guardar mensaje del usuario - CON VALIDACIÓN DE BOT ID
+    if (bot._id) {
+      await Conversation.create({ 
+        bot: bot._id, 
+        sender: "user", 
+        message: text 
+      });
+    }
 
     // Obtener respuesta IA
     let reply = await getGeminiReply(text, bot.prompts, bot.dataset);
@@ -52,30 +64,28 @@ router.post("/webhook/:chatbotId", async (req, res) => {
     // Buscar servicio en dataset
     let selectedService = null;
 
-    // 1. Buscar servicio mencionado explícitamente en el mensaje
     if (Array.isArray(bot.dataset)) {
       selectedService = bot.dataset.find(row =>
         row.servicio && text.toLowerCase().includes(row.servicio.toLowerCase())
       );
     }
 
-    // 2. Si no se mencionó servicio, usar el primer servicio del dataset
-    if (!selectedService && Array.isArray(bot.dataset) && bot.dataset.length > 0) {
-      selectedService = bot.dataset[0];
-      console.log("Usando servicio por defecto:", selectedService.servicio);
-    }
+    // Si no encuentra servicio, buscar por palabras clave
+    if (!selectedService && Array.isArray(bot.dataset)) {
+      const serviceKeywords = {
+        'corte': ['corte', 'pelo', 'cabello', 'cortar'],
+        'manicura': ['manicura', 'uñas', 'esmaltado'],
+        'pedicura': ['pedicura', 'pies', 'uñas pies'],
+        'pestañas': ['pestañas', 'extensiones', 'lifting'],
+        'masaje': ['masaje', 'relajante', 'terapéutico']
+      };
 
-    // 3. También buscar si el servicio se detecta en los prompts
-    if (!selectedService && Array.isArray(bot.prompts)) {
-      for (const prompt of bot.prompts) {
-        if (prompt.question && text.toLowerCase().includes(prompt.question.toLowerCase())) {
-          const serviceMatch = prompt.answer.match(/(manicura|pedicura|pestañas|masaje|tratamiento)/i);
-          if (serviceMatch && Array.isArray(bot.dataset)) {
-            selectedService = bot.dataset.find(row => 
-              row.servicio && row.servicio.toLowerCase().includes(serviceMatch[0].toLowerCase())
-            );
-            if (selectedService) break;
-          }
+      for (const [serviceType, keywords] of Object.entries(serviceKeywords)) {
+        if (keywords.some(keyword => text.toLowerCase().includes(keyword))) {
+          selectedService = bot.dataset.find(row => 
+            row.servicio && row.servicio.toLowerCase().includes(serviceType)
+          );
+          if (selectedService) break;
         }
       }
     }
@@ -97,35 +107,35 @@ router.post("/webhook/:chatbotId", async (req, res) => {
       /cita (confirmada|agendada|programada|reservada)/i,
       /(confirmo|agendo|programo) (la |el )?cita/i,
       /(quiero|deseo) (agendar|programar) (una |la )?cita/i,
-      /(sí|ok|confirmado|de acuerdo|perfecto).*(cita|reserva)/i
+      /(sí|ok|confirmado|de acuerdo|perfecto).*(cita|reserva)/i,
+      /claro.*cita|confirmada.*cita/i
     ];
 
-    const citaOK = citaPatterns.some(pattern => pattern.test(reply)) || 
-                   /cita (confirmada|agendada|programada)/i.test(reply);
+    const citaOK = citaPatterns.some(pattern => pattern.test(reply));
 
-    console.log("Detección de cita:", citaOK, "Texto:", reply);
+    console.log("Detección de cita:", citaOK);
     console.log("Servicio seleccionado:", selectedService);
-    console.log("User tiene GoogleTokens:", !!bot.user.googleTokens);
+    console.log("User tiene GoogleTokens:", !!bot.user?.googleTokens);
 
-    if (citaOK && bot.user.googleTokens) {
+    if (citaOK && bot.user?.googleTokens) {
       console.log("✅ Intentando crear evento en calendario...");
       
       const owner = bot.user;
       const duration = selectedService ? parseInt(selectedService.duracion) || 30 : 30;
-      const serviceName = selectedService ? selectedService.servicio : "Cita";
+      const serviceName = selectedService ? selectedService.servicio : "Cita de cliente";
       const buffer = 10;
 
       const { start, end } = parseDate(text);
       
       if (!start) {
-        console.error("❌ No se pudo detectar la fecha en el mensaje:", text);
-        reply = "No pude detectar la fecha y hora para la cita. Por favor, especifica fecha y hora claramente.";
+        console.error("❌ No se pudo detectar la fecha");
+        reply = "No pude detectar la fecha y hora para la cita. Por favor, especifica fecha y hora claramente (ej: 'hoy a las 17:00' o 'mañana a las 10:30').";
       } else {
         const startTime = start;
         const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
 
-        // Solo verificar disponibilidad si hay un servicio específico
-        if (selectedService) {
+        try {
+          // Verificar disponibilidad
           const events = await getCalendarEvents(
             owner.googleTokens,
             startTime,
@@ -133,47 +143,31 @@ router.post("/webhook/:chatbotId", async (req, res) => {
             serviceName
           );
 
-          if (events && events.length >= (selectedService.capacidad || 1)) {
-            reply = `Lo siento, no hay disponibilidad para "${serviceName}" en ese horario. Por favor, sugiere otra hora.`;
-            
-            // Guardar y enviar respuesta inmediatamente
-            await Conversation.create({ bot: bot._id, sender: "bot", message: reply });
-            
-            // Enviar respuesta a Telegram
-            if (bot.telegramToken) {
-              await axios.post(
-                `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
-                { chat_id: chatId, text: reply, parse_mode: "HTML" },
-                { timeout: 10000 }
-              );
-            }
-            
-            return res.sendStatus(200);
-          }
-        }
-
-        try {
-          const link = await addCalendarEvent({
-            tokens: owner.googleTokens,
-            summary: `Cita: ${serviceName}`,
-            description: `Cliente de Telegram\nMensaje: "${text}"\nBot: "${reply}"\nServicio: ${serviceName}`,
-            durationMinutes: duration,
-            startTime: startTime,
-          });
-
-          if (link) {
-            await sendEmail({
-              to: owner.email,
-              subject: `📅 Nueva cita desde Telegram (${bot.name})`,
-              text: `Cita añadida a tu Google Calendar:\n${link}\n\nServicio: ${serviceName}\nDuración: ${duration} minutos\nCliente de Telegram\nMensaje: "${text}"`,
-            });
-            
-            console.log("✅ Evento creado y email enviado");
-            
-            // Actualizar respuesta para incluir confirmación
-            reply += `\n\n✅ Cita agendada para el ${startTime.toLocaleDateString()} a las ${startTime.toLocaleTimeString()}.`;
+          if (events && events.length > 0) {
+            reply = `Lo siento, no hay disponibilidad para el ${start.toLocaleDateString()} a las ${start.toLocaleTimeString()}. Por favor, sugiere otra hora.`;
           } else {
-            reply = "Hubo un error al crear la cita en el calendario. Por favor, intenta de nuevo.";
+            // Crear evento
+            const link = await addCalendarEvent({
+              tokens: owner.googleTokens,
+              summary: `Cita: ${serviceName}`,
+              description: `Cliente: Telegram\nServicio: ${serviceName}\nDuración: ${duration} min\nMensaje: "${text}"\nRespuesta bot: "${reply}"`,
+              durationMinutes: duration,
+              startTime: startTime
+            });
+
+            if (link) {
+              // Enviar email de confirmación
+              await sendEmail({
+                to: owner.email,
+                subject: `📅 Nueva cita desde Telegram - ${serviceName}`,
+                text: `Nueva cita agendada:\n\n📅 Fecha: ${startTime.toLocaleDateString()}\n⏰ Hora: ${startTime.toLocaleTimeString()}\n💼 Servicio: ${serviceName}\n⏱️ Duración: ${duration} minutos\n\nEnlace al calendario: ${link}\n\nMensaje del cliente:\n"${text}"`
+              });
+
+              console.log("✅ Evento creado y email enviado");
+              reply += `\n\n✅ Cita confirmada para el ${startTime.toLocaleDateString()} a las ${startTime.toLocaleTimeString()}. Se ha enviado la confirmación por email.`;
+            } else {
+              reply = "Hubo un error al crear la cita en el calendario. Por favor, intenta de nuevo.";
+            }
           }
         } catch (calendarError) {
           console.error("❌ Error al crear evento:", calendarError);
@@ -183,14 +177,24 @@ router.post("/webhook/:chatbotId", async (req, res) => {
     }
 
     // Guardar respuesta del bot
-    await Conversation.create({ bot: bot._id, sender: "bot", message: reply });
+    if (bot._id) {
+      await Conversation.create({ 
+        bot: bot._id, 
+        sender: "bot", 
+        message: reply 
+      });
+    }
 
     // Enviar respuesta a Telegram si hay token
     if (bot.telegramToken) {
       try {
         await axios.post(
           `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
-          { chat_id: chatId, text: reply, parse_mode: "HTML" },
+          { 
+            chat_id: chatId, 
+            text: reply,
+            parse_mode: "HTML" 
+          },
           { timeout: 10000 }
         );
         console.log("✅ Mensaje enviado a Telegram");
