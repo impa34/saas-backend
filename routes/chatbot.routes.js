@@ -217,26 +217,30 @@ router.post("/:id/reply", async (req, res) => {
       );
     }
 
-    // 2. Si no se mencionó servicio, usar el primer servicio del dataset
-    if (!selectedService && Array.isArray(bot.dataset) && bot.dataset.length > 0) {
-      selectedService = bot.dataset[0]; // Usar el primer servicio por defecto
-      console.log("Usando servicio por defecto:", selectedService.servicio);
-    }
+    // 2. Si no encuentra servicio, buscar por palabras clave (COMO EN TELEGRAM)
+    if (!selectedService && Array.isArray(bot.dataset)) {
+      const serviceKeywords = {
+        'corte': ['corte', 'pelo', 'cabello', 'cortar'],
+        'manicura': ['manicura', 'uñas', 'esmaltado'],
+        'pedicura': ['pedicura', 'pies', 'uñas pies'],
+        'pestañas': ['pestañas', 'extensiones', 'lifting'],
+        'masaje': ['masaje', 'relajante', 'terapéutico']
+      };
 
-    // 3. También buscar si el servicio se detecta en los prompts
-    if (!selectedService && Array.isArray(bot.prompts)) {
-      for (const prompt of bot.prompts) {
-        if (prompt.question && message.toLowerCase().includes(prompt.question.toLowerCase())) {
-          // Intentar extraer servicio de la respuesta del prompt
-          const serviceMatch = prompt.answer.match(/(manicura|pedicura|pestañas|masaje|tratamiento)/i);
-          if (serviceMatch && Array.isArray(bot.dataset)) {
-            selectedService = bot.dataset.find(row => 
-              row.servicio && row.servicio.toLowerCase().includes(serviceMatch[0].toLowerCase())
-            );
-            if (selectedService) break;
-          }
+      for (const [serviceType, keywords] of Object.entries(serviceKeywords)) {
+        if (keywords.some(keyword => message.toLowerCase().includes(keyword))) {
+          selectedService = bot.dataset.find(row => 
+            row.servicio && row.servicio.toLowerCase().includes(serviceType)
+          );
+          if (selectedService) break;
         }
       }
+    }
+
+    // 3. Si no se mencionó servicio, usar el primer servicio del dataset
+    if (!selectedService && Array.isArray(bot.dataset) && bot.dataset.length > 0) {
+      selectedService = bot.dataset[0];
+      console.log("Usando servicio por defecto:", selectedService?.servicio);
     }
 
     // Respuestas sobre precio/duración
@@ -251,49 +255,83 @@ router.post("/:id/reply", async (req, res) => {
       }
     }
 
-    // Detectar cita
-    const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
-    if (citaOK && selectedService && bot.user.googleTokens) {
-      const owner = bot.user;
-      const duration = parseInt(selectedService.duracion) || 30;
-      const buffer = 10; // minutos de buffer entre citas
+    // DETECCIÓN DE CITA MEJORADA (IGUAL QUE EN TELEGRAM)
+    const citaPatterns = [
+      /cita (confirmada|agendada|programada|reservada)/i,
+      /(confirmo|agendo|programo) (la |el )?cita/i,
+      /(quiero|deseo) (agendar|programar) (una |la )?cita/i,
+      /(sí|ok|confirmado|de acuerdo|perfecto).*(cita|reserva)/i,
+      /claro.*cita|confirmada.*cita/i
+    ];
 
-      // Detectar fecha/hora de la cita
-      const { start, end } = parseDate(message);
-      const startTime = start;
-      const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
+    const citaOK = citaPatterns.some(pattern => pattern.test(reply));
 
-      // Consultar Google Calendar para evitar solapamientos considerando capacidad
-      const events = await getCalendarEvents(
-        owner.googleTokens,
-        startTime,
-        endTime,
-        selectedService.servicio
-      );
+    console.log("Detección de cita WEB:", citaOK);
+    console.log("Servicio seleccionado WEB:", selectedService);
+    console.log("User tiene GoogleTokens WEB:", !!bot.user?.googleTokens);
 
-      if (events && events.length >= (selectedService.capacidad || 1)) {
-        return res.json({
-          reply: `Lo siento, no hay disponibilidad para "${selectedService.servicio}" en ese horario. Por favor, sugiere otra hora.`,
-        });
-      }
-
-      // Crear evento
-      const link = await addCalendarEvent({
-        tokens: owner.googleTokens,
-        summary: `Cita: ${selectedService.servicio}`,
-        description: `Mensaje: "${message}"\nBot: "${reply}"`,
-        durationMinutes: duration,
-        startTime: startTime
-      });
-
-      await sendEmail({
-        to: owner.email,
-        subject: `Nueva cita agendada (${bot.name})`,
-        text: `Cita añadida a tu Google Calendar:\n${link}\n\nMensaje cliente:\n"${message}"`,
-      });
+    // LÓGICA DE CITA MEJORADA (IGUAL QUE EN TELEGRAM)
+    if (citaOK && bot.user?.googleTokens) {
+      console.log("✅ Intentando crear evento en calendario desde WEB...");
       
-      // Actualizar respuesta para incluir confirmación
-      reply += `\n\n✅ Cita agendada para el ${startTime.toLocaleDateString()} a las ${startTime.toLocaleTimeString()}.`;
+      const owner = bot.user;
+      const duration = selectedService ? parseInt(selectedService.duracion) || 30 : 30;
+      const serviceName = selectedService ? selectedService.servicio : "Cita de cliente";
+      const buffer = 10;
+
+      const { start, end } = parseDate(message);
+      
+      if (!start) {
+        console.error("❌ No se pudo detectar la fecha en WEB");
+        reply = "No pude detectar la fecha y hora para la cita. Por favor, especifica fecha y hora claramente (ej: 'hoy a las 17:00' o 'mañana a las 10:30').";
+      } else {
+        const startTime = start;
+        const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
+
+        try {
+          // Verificar disponibilidad (SOLO SI HAY SERVICIO ESPECÍFICO)
+          if (selectedService) {
+            const events = await getCalendarEvents(
+              owner.googleTokens,
+              startTime,
+              endTime,
+              serviceName
+            );
+
+            if (events && events.length >= (selectedService.capacidad || 1)) {
+              return res.json({
+                reply: `Lo siento, no hay disponibilidad para "${serviceName}" en ese horario. Por favor, sugiere otra hora.`
+              });
+            }
+          }
+
+          // Crear evento
+          const link = await addCalendarEvent({
+            tokens: owner.googleTokens,
+            summary: `Cita: ${serviceName}`,
+            description: `Cliente: Web\nServicio: ${serviceName}\nDuración: ${duration} min\nMensaje: "${message}"\nRespuesta bot: "${reply}"`,
+            durationMinutes: duration,
+            startTime: startTime
+          });
+
+          if (link) {
+            // Enviar email de confirmación
+            await sendEmail({
+              to: owner.email,
+              subject: `📅 Nueva cita desde Web - ${serviceName}`,
+              text: `Nueva cita agendada:\n\n📅 Fecha: ${startTime.toLocaleDateString()}\n⏰ Hora: ${startTime.toLocaleTimeString()}\n💼 Servicio: ${serviceName}\n⏱️ Duración: ${duration} minutos\n\nEnlace al calendario: ${link}\n\nMensaje del cliente:\n"${message}"`
+            });
+
+            console.log("✅ Evento creado y email enviado desde WEB");
+            reply += `\n\n✅ Cita confirmada para el ${startTime.toLocaleDateString()} a las ${startTime.toLocaleTimeString()}. Se ha enviado la confirmación por email.`;
+          } else {
+            reply = "Hubo un error al crear la cita en el calendario. Por favor, intenta de nuevo.";
+          }
+        } catch (calendarError) {
+          console.error("❌ Error al crear evento desde WEB:", calendarError);
+          reply = "Lo siento, hubo un error al crear la cita. Por favor, contacta con el establecimiento directamente.";
+        }
+      }
     }
 
     // Guardar respuesta del bot
