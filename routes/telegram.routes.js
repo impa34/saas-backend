@@ -10,10 +10,7 @@ import { sendEmail } from "../utils/sendEmail.js";
 
 const router = express.Router();
 
-/**
- * Webhook de Telegram adaptado:
- * Cada bot de tu sistema tendrá su propio webhook: /webhook/:chatbotId
- */
+
 router.post("/webhook/:chatbotId", async (req, res) => {
   try {
     console.log("Mensaje recibido:", JSON.stringify(req.body, null, 2));
@@ -25,16 +22,18 @@ router.post("/webhook/:chatbotId", async (req, res) => {
     const chatId = message.chat.id;
     const text = message.text;
 
-    // Buscar bot por su _id (lo tienes en la URL del webhook)
+    // Buscar bot por su _id
     const bot = await Chatbot.findById(chatbotId).populate("user");
- if (!bot || !bot._id) {
-  console.error("Bot no encontrado o _id inválido:", bot);
-  return res.sendStatus(500);
-}
-if (!bot.telegramToken) {
-  console.error("No hay token de Telegram para este bot");
-  return res.sendStatus(200);
-}
+    if (!bot || !bot._id) {
+      console.error("Bot no encontrado o _id inválido:", chatbotId);
+      return res.sendStatus(500);
+    }
+    
+    if (!bot.telegramToken) {
+      console.error("No hay token de Telegram para este bot");
+      return res.sendStatus(200);
+    }
+
     // Guardar el chatId de Telegram asociado al cliente (solo la primera vez)
     if (!bot.telegramChatId) {
       bot.telegramChatId = chatId;
@@ -43,15 +42,9 @@ if (!bot.telegramToken) {
 
     // Guardar mensaje del usuario
     await Conversation.create({ bot: bot._id, sender: "user", message: text });
-    console.log("Enviando mensaje a Telegram:", {
-  chat_id: chatId,
-  text: reply,
-  token: bot.telegramToken
-});
 
     // Obtener respuesta IA
     let reply = await getGeminiReply(text, bot.prompts, bot.dataset);
-
     // Revisar dataset de servicios
     let selectedService = null;
     if (Array.isArray(bot.dataset)) {
@@ -115,15 +108,26 @@ if (!bot.telegramToken) {
     // Guardar respuesta del bot
     await Conversation.create({ bot: bot._id, sender: "bot", message: reply });
 
-    // Enviar respuesta a Telegram usando el token de este bot
+    // ✅ CORREGIDO: Mejor logging para debug
+    console.log("Enviando mensaje a Telegram:", {
+      chat_id: chatId,
+      text: reply.substring(0, 50) + "...", // Solo mostrar parte del texto
+      token: bot.telegramToken ? "PRESENTE" : "FALTANTE"
+    });
+
+    // Enviar respuesta a Telegram
     await axios.post(
       `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
-      { chat_id: chatId, text: reply }
+      { 
+        chat_id: chatId, 
+        text: reply,
+        parse_mode: "HTML" // Opcional: para formato básico
+      }
     );
-console.log("Mensaje recibido:", req.body);
+
     res.sendStatus(200);
   } catch (e) {
-    console.error("Error en webhook Telegram:", e);
+    console.error("Error en webhook Telegram:", e.message);
     res.sendStatus(500);
   }
 });

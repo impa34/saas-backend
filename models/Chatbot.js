@@ -15,7 +15,10 @@ const chatbotSchema = new mongoose.Schema({
         fontSize:{type:Number, default:14}
     },
     telegramChatId: String,
-   telegramToken: { type: String, default: null },
-})
+    telegramToken: { type: String, default: null },
+    telegramBotUsername: { type: String, default: null }, // ✅ Añadir este campo
+    telegramWebhookSet: { type: Boolean, default: false }, // Para tracking
+    telegramLastUpdate: { type: Date } // Última interacción
+}, { timestamps: true });
 
 export default mongoose.model("Chatbot", chatbotSchema)

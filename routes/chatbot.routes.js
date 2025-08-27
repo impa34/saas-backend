@@ -134,8 +134,8 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
     chatbot.telegramBotUsername = response.data.result.username;
     await chatbot.save();
 
-    // Registrar webhook automáticamente
-    const webhookUrl = `https://saas-backend-xrkb.onrender.com/api/telegram/webhook`;
+    // ✅ CORREGIDO: Webhook URL con chatbotId
+    const webhookUrl = `https://saas-backend-xrkb.onrender.com/api/telegram/webhook/${chatbotId}`;
     const webhookRes = await axios.get(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}`);
 
     if (!webhookRes.data.ok) {
