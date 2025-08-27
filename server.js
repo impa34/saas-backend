@@ -37,7 +37,11 @@ app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
 app.use("/", healthRoutes)
 
-app.use("/telegram", telegramRoutes);
+app.use('/api/telegram/', express.json({ verify: (req, res, buf) => {
+  req.rawBody = buf.toString();
+}}));
+
+app.use("/api/telegram", telegramRoutes);
 
 app.use(express.static(path.join(__dirname, "../client/dist")));
 app.use(express.static(path.join(__dirname, "../client/public")));

@@ -13,24 +13,56 @@ const router = express.Router();
 
 router.post("/webhook/:chatbotId", async (req, res) => {
   try {
-    console.log("Mensaje recibido:", JSON.stringify(req.body, null, 2));
+
+    // Agrega esta verificación al inicio del webhook:
+console.log("Token del bot:", bot.telegramToken ? "PRESENTE" : "FALTANTE");
+if (bot.telegramToken) {
+  console.log("Longitud token:", bot.telegramToken.length);
+  
+  // Verifica rápidamente el token
+  try {
+    const test = await axios.get(`https://api.telegram.org/bot${bot.telegramToken}/getMe`, {
+      timeout: 5000
+    });
+    console.log("✅ Token válido, bot:", test.data.result);
+  } catch (tokenError) {
+    console.error("❌ Token inválido o error de conexión:");
+    console.error(tokenError.response?.data || tokenError.message);
+  }
+}
+    console.log("=== WEBHOOK RECIBIDO ===");
+    console.log("Chatbot ID:", req.params.chatbotId);
+    console.log("Body completo:", JSON.stringify(req.body, null, 2));
+    
     const chatbotId = req.params.chatbotId;
     const message = req.body.message;
 
-    if (!message || !message.chat || !message.text) return res.sendStatus(200);
+    if (!message) {
+      console.log("No hay mensaje en el body");
+      return res.sendStatus(200);
+    }
+
+    if (!message.chat || !message.text) {
+      console.log("Mensaje sin chat o text:", message);
+      return res.sendStatus(200);
+    }
 
     const chatId = message.chat.id;
     const text = message.text;
+    
+    console.log("Chat ID:", chatId, "Texto:", text);
 
-    // Buscar bot por su _id
+    // Buscar bot
     const bot = await Chatbot.findById(chatbotId).populate("user");
-    if (!bot || !bot._id) {
-      console.error("Bot no encontrado o _id inválido:", chatbotId);
+    if (!bot) {
+      console.error("❌ Bot no encontrado con ID:", chatbotId);
       return res.sendStatus(500);
     }
     
+    console.log("Bot encontrado:", bot.name);
+    
     if (!bot.telegramToken) {
-      console.error("No hay token de Telegram para este bot");
+      console.error("❌ No hay token de Telegram para este bot");
       return res.sendStatus(200);
     }
 
@@ -42,6 +74,24 @@ router.post("/webhook/:chatbotId", async (req, res) => {
 
     // Guardar mensaje del usuario
     await Conversation.create({ bot: bot._id, sender: "user", message: text });
+    // Al enviar mensaje a Telegram:
+try {
+  const telegramResponse = await axios.post(
+    `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`,
+    { 
+      chat_id: chatId, 
+      text: reply,
+      parse_mode: "HTML"
+    },
+    { timeout: 10000 } // Timeout de 10 segundos
+  );
+  
+  console.log("✅ Mensaje enviado a Telegram:", telegramResponse.data);
+} catch (telegramError) {
+  console.error("❌ Error enviando a Telegram:");
+  console.error("URL:", `https://api.telegram.org/bot${bot.telegramToken}/sendMessage`);
+  console.error("Error:", telegramError.response?.data || telegramError.message);
+}
 
     // Obtener respuesta IA
     let reply = await getGeminiReply(text, bot.prompts, bot.dataset);

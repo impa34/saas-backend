@@ -124,10 +124,18 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
       return res.status(400).json({ error: "Token de Telegram inválido" });
     }
 
-    const chatbot = await Chatbot.findOne({ _id: chatbotId, owner: req.user.id });
-    if (!chatbot) {
-      return res.status(404).json({ error: "Chatbot no encontrado" });
-    }
+// En la ruta de integración (cuando guardas el token):
+console.log("Chatbot ID recibido:", chatbotId);
+console.log("Tipo de ID:", typeof chatbotId);
+
+// Verifica que el formato sea correcto
+const bot = await Chatbot.findById(chatbotId).populate("user");
+if (!bot) {
+  console.error("❌ NO SE ENCUENTRA EL BOT - Verifica el ID:");
+  console.error("ID buscado:", chatbotId);
+  console.error("Es ObjectId válido?", mongoose.Types.ObjectId.isValid(chatbotId));
+  return res.sendStatus(500);
+}
 
     // Guardamos el token y username
     chatbot.telegramToken = token;
