@@ -102,11 +102,6 @@ router.delete("/:id", async (req, res) => {
     res.status(500).json({ message: "Error deleting bot" });
   }
 });
-router.post("/:id", async (req, res) => {
-  const bot = await Chatbot.findById(req.params.id);
-  if (!bot) return res.status(404).json({ message: "Bot not found" });
-  res.json(bot);
-});
 
 // Guardar el token de Telegram
 router.post("/:id/integrations/telegram", auth, async (req, res) => {
