@@ -7,11 +7,13 @@ import { parseDate } from "../utils/parseDate.js";
 import { getCalendarEvents } from "../utils/getCalendarEvents.js";
 import { addCalendarEvent } from "../utils/calendar.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import checkPlan from "../middleware/checkPlan.js";
+import auth from "../middleware/auth.js"
 
 const router = express.Router();
 
 
-router.post("/webhook/:chatbotId", async (req, res) => {
+router.post("/webhook/:chatbotId",auth, checkPlan(), async (req, res) => {
   try {
     console.log("=== WEBHOOK RECIBIDO ===");
     console.log("Chatbot ID:", req.params.chatbotId);

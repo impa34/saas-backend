@@ -15,6 +15,7 @@ import User from "../models/User.js";
 import { Parser } from "json2csv";
 import { getCalendarEvents } from "../utils/getCalendarEvents.js";
 import { parseDate } from "../utils/parseDate.js";
+import checkPlan from "../middleware/checkPlan.js";
 
 const upload = multer({ dest: "uploads/" });
 
@@ -104,7 +105,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 // Guardar el token de Telegram
-router.post("/:id/integrations/telegram", auth, async (req, res) => {
+router.post("/:id/integrations/telegram", auth, checkPlan(), async (req, res) => {
   try {
     const { token } = req.body;
     const chatbotId = req.params.id;
