@@ -22,6 +22,12 @@ const app = express();
 
 app.post("/api/stripe/webhook", bodyParser.raw({ type: "application/json" }), webhookHandler);
 
+app.use('/api/telegram/', express.json({ verify: (req, res, buf) => {
+  req.rawBody = buf.toString();
+}}));
+
+app.use("/api/telegram", telegramRoutes);
+
 app.use(express.json());
 app.use(cors({
   origin: ["https://talochatbot.com", "https://www.talochatbot.com"],
@@ -37,11 +43,7 @@ app.use("/api/user", userRoutes)
 app.use("/api/admin", adminRoutes)
 app.use("/", healthRoutes)
 
-app.use('/api/telegram/', express.json({ verify: (req, res, buf) => {
-  req.rawBody = buf.toString();
-}}));
 
-app.use("/api/telegram", telegramRoutes);
 
 app.use(express.static(path.join(__dirname, "../client/dist")));
 app.use(express.static(path.join(__dirname, "../client/public")));

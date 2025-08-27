@@ -124,25 +124,25 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
       return res.status(400).json({ error: "Token de Telegram inválido" });
     }
 
-// En la ruta de integración (cuando guardas el token):
-console.log("Chatbot ID recibido:", chatbotId);
-console.log("Tipo de ID:", typeof chatbotId);
+    // ✅ CORRECCIÓN: Cambiar 'chatbot' por 'bot' para ser consistente
+    console.log("Chatbot ID recibido:", chatbotId);
+    console.log("Tipo de ID:", typeof chatbotId);
 
-// Verifica que el formato sea correcto
-const bot = await Chatbot.findById(chatbotId).populate("user");
-if (!bot) {
-  console.error("❌ NO SE ENCUENTRA EL BOT - Verifica el ID:");
-  console.error("ID buscado:", chatbotId);
-  console.error("Es ObjectId válido?", mongoose.Types.ObjectId.isValid(chatbotId));
-  return res.sendStatus(500);
-}
+    // Verifica que el formato sea correcto
+    const bot = await Chatbot.findById(chatbotId).populate("user");
+    if (!bot) {
+      console.error("❌ NO SE ENCUENTRA EL BOT - Verifica el ID:");
+      console.error("ID buscado:", chatbotId);
+      console.error("Es ObjectId válido?", mongoose.Types.ObjectId.isValid(chatbotId));
+      return res.status(404).json({ error: "Chatbot no encontrado" });
+    }
 
-    // Guardamos el token y username
-    chatbot.telegramToken = token;
-    chatbot.telegramBotUsername = response.data.result.username;
-    await chatbot.save();
+    // ✅ CORRECCIÓN: Usar 'bot' en lugar de 'chatbot'
+    bot.telegramToken = token;
+    bot.telegramBotUsername = response.data.result.username;
+    await bot.save();
 
-    // ✅ CORREGIDO: Webhook URL con chatbotId
+    // Webhook URL con chatbotId
     const webhookUrl = `https://saas-backend-xrkb.onrender.com/api/telegram/webhook/${chatbotId}`;
     const webhookRes = await axios.get(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}`);
 
