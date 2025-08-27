@@ -209,29 +209,48 @@ router.post("/:id/reply", async (req, res) => {
 
     // Buscar servicio en dataset
     let selectedService = null;
-    if (Array.isArray(bot.dataset)) {
-      for (const row of bot.dataset) {
-        if (
-          row.servicio &&
-          message.toLowerCase().includes(row.servicio.toLowerCase())
-        ) {
-          selectedService = row;
-          break;
-        }
+let serviceFromPrompt = null;
+
+// 1. Buscar servicio mencionado explícitamente en el mensaje
+if (Array.isArray(bot.dataset)) {
+  selectedService = bot.dataset.find(row =>
+    row.servicio && text.toLowerCase().includes(row.servicio.toLowerCase())
+  );
+}
+
+// 2. Si no se mencionó servicio, usar el primer servicio del dataset
+if (!selectedService && Array.isArray(bot.dataset) && bot.dataset.length > 0) {
+  selectedService = bot.dataset[0]; // Usar el primer servicio por defecto
+  console.log("Usando servicio por defecto:", selectedService.servicio);
+}
+
+// 3. También buscar si el servicio se detecta en los prompts
+if (!selectedService && Array.isArray(bot.prompts)) {
+  for (const prompt of bot.prompts) {
+    if (prompt.question && text.toLowerCase().includes(prompt.question.toLowerCase())) {
+      // Intentar extraer servicio de la respuesta del prompt
+      const serviceMatch = prompt.answer.match(/(manicura|pedicura|pestañas|masaje|tratamiento)/i);
+      if (serviceMatch && Array.isArray(bot.dataset)) {
+        selectedService = bot.dataset.find(row => 
+          row.servicio && row.servicio.toLowerCase().includes(serviceMatch[0].toLowerCase())
+        );
+        if (selectedService) break;
       }
     }
+  }
+}
 
-    // Si el usuario pregunta por precio/duración del servicio
-    if (selectedService) {
-      const priceRegex = /precio|cuesta|cost/i;
-      const durationRegex = /duración|dura|tiempo/i;
+// Respuestas sobre precio/duración
+if (selectedService) {
+  const priceRegex = /precio|cuesta|cost|cuánto|valor/i;
+  const durationRegex = /duración|dura|tiempo|cuanto tiempo|horas|minutos/i;
 
-      if (priceRegex.test(message)) {
-        reply = `${selectedService.servicio} cuesta ${selectedService.precio} € y dura ${selectedService.duracion} minutos.`;
-      } else if (durationRegex.test(message)) {
-        reply = `${selectedService.servicio} dura ${selectedService.duracion} minutos y cuesta ${selectedService.precio} €.`;
-      }
-    }
+  if (priceRegex.test(text)) {
+    reply = `${selectedService.servicio} cuesta ${selectedService.precio} € y dura ${selectedService.duracion} minutos.`;
+  } else if (durationRegex.test(text)) {
+    reply = `${selectedService.servicio} dura ${selectedService.duracion} minutos y cuesta ${selectedService.precio} €.`;
+  }
+}
 
     // Detectar cita
     const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
