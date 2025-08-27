@@ -1,7 +1,10 @@
-import { google } from "googleapis";
-import { parseDate } from "./parseDate.js";
-
-export async function addCalendarEvent({ tokens, summary, description, durationMinutes = 30 }) {
+export async function addCalendarEvent({ 
+  tokens, 
+  summary, 
+  description, 
+  durationMinutes = 30,
+  startTime // ✅ Nuevo parámetro opcional
+}) {
   const { client_id, client_secret, redirect_uris } = JSON.parse(process.env.GOOGLE_CREDENTIALS).web;
 
   const oAuth2Client = new google.auth.OAuth2(
@@ -14,22 +17,33 @@ export async function addCalendarEvent({ tokens, summary, description, durationM
   const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
 
   try {
-    const parsed = parseDate(description, durationMinutes, 10); // buffer 10 min
-    if (!parsed) {
-      console.warn("❌ No se pudo interpretar una fecha válida en:", description);
-      return null;
+    let start, end;
+    
+    // ✅ Si se proporciona startTime, usarlo directamente
+    if (startTime) {
+      start = new Date(startTime);
+      end = new Date(start.getTime() + durationMinutes * 60000);
+    } else {
+      // Si no, intentar parsear del description (comportamiento original)
+      const parsed = parseDate(description, durationMinutes, 10);
+      if (!parsed) {
+        console.warn("❌ No se pudo interpretar una fecha válida");
+        return null;
+      }
+      start = parsed.start;
+      end = parsed.end;
     }
 
     // 1️⃣ Comprobar solapamientos
     const existingEvents = await calendar.events.list({
       calendarId: "primary",
-      timeMin: parsed.start.toISOString(),
-      timeMax: parsed.end.toISOString(),
+      timeMin: start.toISOString(),
+      timeMax: end.toISOString(),
       singleEvents: true,
       orderBy: "startTime"
     });
 
-    if (existingEvents.data.items.length > 0) {
+    if (existingEvents.data.items && existingEvents.data.items.length > 0) {
       console.warn("⚠️ Conflicto: ya existe un evento en ese rango.");
       return null;
     }
@@ -39,11 +53,11 @@ export async function addCalendarEvent({ tokens, summary, description, durationM
       summary,
       description,
       start: {
-        dateTime: parsed.start.toISOString(),
+        dateTime: start.toISOString(),
         timeZone: "Europe/Madrid",
       },
       end: {
-        dateTime: parsed.end.toISOString(),
+        dateTime: end.toISOString(),
         timeZone: "Europe/Madrid",
       },
     };

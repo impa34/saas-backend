@@ -97,36 +97,86 @@ router.post("/webhook/:chatbotId", async (req, res) => {
     }
 
     // Detectar cita
-    const citaOK = /cita (confirmada|agendada|programada)/i.test(reply);
-    if (citaOK && selectedService && bot.user.googleTokens) {
-      const owner = bot.user;
-      const duration = parseInt(selectedService.duracion) || 30;
-      const buffer = 10; // minutos de buffer entre citas
+    const citaPatterns = [
+  /cita (confirmada|agendada|programada|reservada)/i,
+  /(confirmo|agendo|programo) (la |el )?cita/i,
+  /(quiero|deseo) (agendar|programar) (una |la )?cita/i,
+  /(sí|ok|confirmado|de acuerdo|perfecto).*(cita|reserva)/i
+];
 
-      // Detectar fecha/hora de la cita
-      const { start } = parseDate(text);
-      const startTime = start;
-      const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
+const citaOK = citaPatterns.some(pattern => pattern.test(reply)) || 
+               /cita (confirmada|agendada|programada)/i.test(reply);
 
-      // Consultar Google Calendar
-      const events = await getCalendarEvents(
-        owner.googleTokens,
-        startTime,
-        endTime,
-        selectedService.servicio
-      );
+console.log("Detección de cita:", citaOK, "Texto:", reply);
+// En el webhook de Telegram, agrega estos logs para debug:
+console.log("=== DIAGNÓSTICO DE CITA ===");
+console.log("Mensaje original:", text);
+console.log("Respuesta Gemini:", reply);
+console.log("Servicio seleccionado:", selectedService);
+console.log("User tiene GoogleTokens:", !!bot.user.googleTokens);
+console.log("citaOK:", citaOK);
 
-      if (events && events.length >= (selectedService.capacidad || 1)) {
-        reply = `Lo siento, no hay disponibilidad para "${selectedService.servicio}" en ese horario. Por favor, sugiere otra hora.`;
-      } else {
-        // Crear evento
+if (citaOK && selectedService && bot.user.googleTokens) {
+  const { start, end } = parseDate(text);
+  console.log("Fecha detectada:", start, end);
+}
+
+if (citaOK && selectedService && bot.user.googleTokens) {
+  console.log("✅ Intentando crear evento en calendario...");
+  
+  const owner = bot.user;
+  const duration = parseInt(selectedService.duracion) || 30;
+  const buffer = 10;
+
+  // ✅ CORRECCIÓN: Parsear fecha del MENSAJE ORIGINAL (text) no de la respuesta (reply)
+  const { start, end } = parseDate(text); // Usar 'text' en lugar de esperar que esté en 'reply'
+  
+  if (!start) {
+    console.error("❌ No se pudo detectar la fecha en el mensaje:", text);
+    reply = "No pude detectar la fecha y hora para la cita. Por favor, especifica fecha y hora claramente.";
+  } else {
+    const startTime = start;
+    const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
+
+    // Consultar Google Calendar
+    const events = await getCalendarEvents(
+      owner.googleTokens,
+      startTime,
+      endTime,
+      selectedService.servicio
+    );
+
+    if (events && events.length >= (selectedService.capacidad || 1)) {
+      reply = `Lo siento, no hay disponibilidad para "${selectedService.servicio}" en ese horario. Por favor, sugiere otra hora.`;
+    } else {
+      try {
+        // ✅ CORRECCIÓN: Pasar startTime explícitamente
         const link = await addCalendarEvent({
           tokens: owner.googleTokens,
           summary: `Cita: ${selectedService.servicio}`,
-          description: `Mensaje: "${text}"\nBot: "${reply}"`,
+          description: `Cliente de Telegram\nMensaje: "${text}"\nBot: "${reply}"`,
           durationMinutes: duration,
-          startTime,
+          startTime: start, // ✅ Pasar la fecha detectada
         });
+
+        if (link) {
+          // Notificar al dueño por email
+          await sendEmail({
+            to: owner.email,
+            subject: `📅 Nueva cita desde Telegram (${bot.name})`,
+            text: `Cita añadida a tu Google Calendar:\n${link}\n\nServicio: ${selectedService.servicio}\nCliente de Telegram\nMensaje: "${text}"`,
+          });
+          
+          console.log("✅ Evento creado y email enviado");
+        } else {
+          reply = "Hubo un error al crear la cita en el calendario. Por favor, intenta de nuevo.";
+        }
+      } catch (calendarError) {
+        console.error("❌ Error al crear evento:", calendarError);
+        reply = "Lo siento, hubo un error al crear la cita. Por favor, contacta con el establecimiento directamente.";
+      }
+    }
+  
 
         // Notificar al dueño por email
         await sendEmail({
