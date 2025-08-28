@@ -428,7 +428,7 @@ router.get("/:id/stats",auth, async (req, res) => {
     let lastInteraction = null;
 
     for (const convo of conversations) {
-      totalMessages += convo.message.length;
+      totalMessages++
 
       
         if (convo.sender === "bot") botMessages++;
