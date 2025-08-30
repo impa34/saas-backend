@@ -5,9 +5,15 @@ export async function getGeminiReply(message, prompts = [], dataset = []) {
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
   const promptLines = prompts
-    .map((p) => `Q: ${p.question}\nA: ${p.answer}`)
-    .join("\n");
+  .map((p) => `User: ${p.question}\nBot: ${p.answer}`)
+  .join("\n");
 
+const systemPrompt = `
+Eres un asistente de chat llamado Talobot.
+Responde de forma breve y natural al usuario.
+No repitas la pregunta del usuario, no uses formato Q:/A:, 
+y responde directamente.
+`;
   const datasetLines = dataset
     .map((entry) => {
       return Object.entries(entry)
@@ -16,7 +22,7 @@ export async function getGeminiReply(message, prompts = [], dataset = []) {
     })
     .join("\n");
 
-  const context = [...promptLines, ...datasetLines].join("\n");
+  const context = [systemPrompt, promptLines, datasetLines].join("\n");
 
   const chat = model.startChat({
     history: [
@@ -27,7 +33,7 @@ export async function getGeminiReply(message, prompts = [], dataset = []) {
     ],
   });
 
-  const fullPrompt = `${context}\nQ: ${message}\nA:`;
+ const fullPrompt = `${context}\nUser: ${message}\nBot:`;
   const result = await chat.sendMessage(fullPrompt);
   const response = await result.response;
   return response.text();
