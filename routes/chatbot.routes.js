@@ -192,7 +192,7 @@ router.post("/:id/reply", async (req, res) => {
     console.log("=== WEB ENDPOINT RECIBIDO ===");
     const { message } = req.body;
     console.log("Mensaje recibido:", message);
-    
+
     const bot = await Chatbot.findById(req.params.id).populate("user");
     if (!bot) {
       console.error("❌ Bot no encontrado");
@@ -209,54 +209,57 @@ router.post("/:id/reply", async (req, res) => {
       message,
     });
 
-    // Obtener respuesta IA
-    let reply = await getGeminiReply(message, bot.prompts, bot.dataset);
-    console.log("Respuesta Gemini:", reply);
+    let reply = "";
 
-    // Buscar servicio en dataset
+    // --------------------------
+    // 1. Detectar intención de cita en el MENSAJE
+    // --------------------------
+    const citaIntentRegex = /(cita|reservar|agendar|programar|quiero|deseo)/i;
+    const userWantsAppointment = citaIntentRegex.test(message);
+    console.log("¿Usuario quiere cita?:", userWantsAppointment);
+
+    // --------------------------
+    // 2. Intentar identificar servicio
+    // --------------------------
     let selectedService = null;
-
-    // 1. Buscar servicio mencionado explícitamente en el mensaje
     if (Array.isArray(bot.dataset)) {
       selectedService = bot.dataset.find(row =>
         row.servicio && message.toLowerCase().includes(row.servicio.toLowerCase())
       );
-      console.log("Servicio encontrado por nombre:", selectedService?.servicio);
     }
 
-    // 2. Si no encuentra servicio, buscar por palabras clave
+    // Palabras clave si no se encontró directo
     if (!selectedService && Array.isArray(bot.dataset)) {
       const serviceKeywords = {
-        'corte': ['corte', 'pelo', 'cabello', 'cortar'],
-        'manicura': ['manicura', 'uñas', 'esmaltado'],
-        'pedicura': ['pedicura', 'pies', 'uñas pies'],
-        'pestañas': ['pestañas', 'extensiones', 'lifting'],
-        'masaje': ['masaje', 'relajante', 'terapéutico']
+        corte: ["corte", "pelo", "cabello", "cortar"],
+        manicura: ["manicura", "uñas", "esmaltado"],
+        pedicura: ["pedicura", "pies", "uñas pies"],
+        pestañas: ["pestañas", "extensiones", "lifting"],
+        masaje: ["masaje", "relajante", "terapéutico"],
       };
-
       for (const [serviceType, keywords] of Object.entries(serviceKeywords)) {
-        if (keywords.some(keyword => message.toLowerCase().includes(keyword))) {
-          selectedService = bot.dataset.find(row => 
+        if (keywords.some(k => message.toLowerCase().includes(k))) {
+          selectedService = bot.dataset.find(row =>
             row.servicio && row.servicio.toLowerCase().includes(serviceType)
           );
-          if (selectedService) {
-            console.log("Servicio encontrado por palabra clave:", selectedService.servicio);
-            break;
-          }
+          break;
         }
       }
     }
 
-    // 3. Si no se mencionó servicio, usar el primer servicio del dataset
+    // Si no hay, usar default
     if (!selectedService && Array.isArray(bot.dataset) && bot.dataset.length > 0) {
       selectedService = bot.dataset[0];
-      console.log("Usando servicio por defecto:", selectedService?.servicio);
     }
 
-    // Respuestas sobre precio/duración
+    console.log("Servicio detectado:", selectedService?.servicio);
+
+    // --------------------------
+    // 3. Si es sobre precio/duración → responder directo
+    // --------------------------
     if (selectedService) {
       const priceRegex = /precio|cuesta|cost|cuánto|valor/i;
-      const durationRegex = /duración|dura|tiempo|cuanto tiempo|horas|minutos/i;
+      const durationRegex = /duración|dura|tiempo|horas|minutos/i;
 
       if (priceRegex.test(message)) {
         reply = `${selectedService.servicio} cuesta ${selectedService.precio} € y dura ${selectedService.duracion} minutos.`;
@@ -265,111 +268,59 @@ router.post("/:id/reply", async (req, res) => {
       }
     }
 
-    // DETECCIÓN DE CITA MEJORADA
-    const citaPatterns = [
-      /cita (confirmada|agendada|programada|reservada)/i,
-      /(confirmo|agendo|programo) (la |el )?cita/i,
-      /(quiero|deseo) (agendar|programar) (una |la )?cita/i,
-      /(sí|ok|confirmado|de acuerdo|perfecto).*(cita|reserva)/i,
-      /claro.*cita|confirmada.*cita/i
-    ];
-
-    const citaOK = citaPatterns.some(pattern => {
-      const match = pattern.test(reply);
-      if (match) console.log("Patrón que coincide:", pattern.toString());
-      return match;
-    });
-
-    console.log("Detección de cita WEB:", citaOK);
-    console.log("Servicio seleccionado WEB:", selectedService?.servicio);
-    console.log("User tiene GoogleTokens WEB:", !!bot.user?.googleTokens);
-    console.log("GoogleTokens presentes:", bot.user?.googleTokens ? "SÍ" : "NO");
-
-    // LÓGICA DE CITA
-    if (citaOK && bot.user?.googleTokens) {
-      console.log("✅ Intentando crear evento en calendario desde WEB...");
-      
-      const owner = bot.user;
+    // --------------------------
+    // 4. Si el usuario quiere cita → parsear fecha y crear evento
+    // --------------------------
+    if (userWantsAppointment && bot.user?.googleTokens) {
       const duration = selectedService ? parseInt(selectedService.duracion) || 30 : 30;
       const serviceName = selectedService ? selectedService.servicio : "Cita de cliente";
-      const buffer = 10;
 
       console.log("Parseando fecha del mensaje:", message);
-      const { start, end } = parseDate(message);
-      console.log("Fecha parseada - start:", start, "end:", end);
-      
+      const { start } = parseDate(message);
       if (!start) {
-        console.error("❌ No se pudo detectar la fecha en WEB");
-        reply = "No pude detectar la fecha y hora para la cita. Por favor, especifica fecha y hora claramente (ej: 'hoy a las 17:00' o 'mañana a las 10:30').";
+        reply = "No pude detectar la fecha y hora para la cita. Por favor, especifica fecha y hora claramente (ej: 'mañana a las 10:00').";
       } else {
         const startTime = start;
-        const endTime = new Date(start.getTime() + (duration + buffer) * 60000);
-
-        console.log("Fecha de inicio:", startTime);
-        console.log("Fecha de fin:", endTime);
+        const endTime = new Date(start.getTime() + duration * 60000);
 
         try {
-          // Verificar disponibilidad
-          if (selectedService) {
-            console.log("Verificando disponibilidad para:", serviceName);
-            const events = await getCalendarEvents(
-              owner.googleTokens,
-              startTime,
-              endTime,
-              serviceName
-            );
-
-            console.log("Eventos encontrados en ese horario:", events?.length);
-            if (events && events.length >= (selectedService.capacidad || 1)) {
-              console.log("❌ No hay disponibilidad");
-              return res.json({
-                reply: `Lo siento, no hay disponibilidad para "${serviceName}" en ese horario. Por favor, sugiere otra hora.`
-              });
-            }
-          }
-
-          // Crear evento
-          console.log("Creando evento en calendario...");
-          const link = await addCalendarEvent({
-            tokens: owner.googleTokens,
-            summary: `Cita: ${serviceName}`,
-            description: `Cliente: Web\nServicio: ${serviceName}\nDuración: ${duration} min\nMensaje: "${message}"\nRespuesta bot: "${reply}"`,
-            durationMinutes: duration,
-            startTime: startTime
-          });
-
-          console.log("Link del evento creado:", link);
-
-          if (link) {
-            // Enviar email de confirmación
-            console.log("Enviando email a:", owner.email);
-            try {
-              await sendEmail({
-                to: owner.email,
-                subject: `📅 Nueva cita desde Web - ${serviceName}`,
-                text: `Nueva cita agendada:\n\n📅 Fecha: ${startTime.toLocaleDateString()}\n⏰ Hora: ${startTime.toLocaleTimeString()}\n💼 Servicio: ${serviceName}\n⏱️ Duración: ${duration} minutos\n\nEnlace al calendario: ${link}\n\nMensaje del cliente:\n"${message}"`
-              });
-              console.log("✅ Email enviado exitosamente");
-            } catch (emailError) {
-              console.error("❌ Error enviando email:", emailError);
-            }
-
-            console.log("✅ Evento creado y email enviado desde WEB");
-            reply += `\n\n✅ Cita confirmada para el ${startTime.toLocaleDateString()} a las ${startTime.toLocaleTimeString()}. Se ha enviado la confirmación por email.`;
+          const events = await getCalendarEvents(bot.user.googleTokens, startTime, endTime, serviceName);
+          if (events && events.length >= (selectedService?.capacidad || 1)) {
+            reply = `Lo siento, no hay disponibilidad para "${serviceName}" en ese horario. ¿Quieres otra hora?`;
           } else {
-            console.error("❌ Link del evento es null/undefined");
-            reply = "Hubo un error al crear la cita en el calendario. Por favor, intenta de nuevo.";
+            const link = await addCalendarEvent({
+              tokens: bot.user.googleTokens,
+              summary: `Cita: ${serviceName}`,
+              description: `Cliente: Web\nServicio: ${serviceName}\nMensaje: "${message}"`,
+              durationMinutes: duration,
+              startTime,
+            });
+
+            if (link) {
+              // Email
+              await sendEmail({
+                to: bot.user.email,
+                subject: `📅 Nueva cita - ${serviceName}`,
+                text: `Nueva cita:\n📅 ${startTime.toLocaleDateString()} ${startTime.toLocaleTimeString()}\n💼 ${serviceName}\n\n${link}`,
+              });
+
+              reply = `✅ Tu cita de ${serviceName} queda confirmada para el ${startTime.toLocaleDateString()} a las ${startTime.toLocaleTimeString()}. Se ha enviado confirmación por email.`;
+            } else {
+              reply = "❌ Hubo un error al crear la cita. Intenta de nuevo.";
+            }
           }
-        } catch (calendarError) {
-          console.error("❌ Error al crear evento desde WEB:", calendarError);
-          console.error("Stack trace:", calendarError.stack);
-          reply = "Lo siento, hubo un error al crear la cita. Por favor, contacta con el establecimiento directamente.";
+        } catch (err) {
+          console.error("❌ Error calendario:", err);
+          reply = "Hubo un problema al crear la cita. Por favor, intenta más tarde.";
         }
       }
-    } else {
-      console.log("❌ Condiciones no cumplidas para crear cita:");
-      console.log("citaOK:", citaOK);
-      console.log("googleTokens:", !!bot.user?.googleTokens);
+    }
+
+    // --------------------------
+    // 5. Si no es cita ni precio/duración → usar Gemini normal
+    // --------------------------
+    if (!reply) {
+      reply = await getGeminiReply(message, bot.prompts, bot.dataset);
     }
 
     // Guardar respuesta del bot
@@ -381,12 +332,13 @@ router.post("/:id/reply", async (req, res) => {
 
     console.log("Respuesta final:", reply);
     return res.json({ reply });
+
   } catch (e) {
     console.error("Error in /reply:", e);
-    console.error("Stack trace:", e.stack);
     return res.status(500).json({ message: "Couldn't generate message" });
   }
 });
+
 
 router.put("/:id/config", auth, async (req, res) => {
   const { backgroundColor, textColor, font, fontSize } = req.body;
