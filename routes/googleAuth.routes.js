@@ -43,6 +43,16 @@ router.get("/callback", async (req, res) => {
   try {
     const {code, error} = req.query;
 
+    async function getGoogleTimeZone(tokens) {
+  const { client_id, client_secret, redirect_uris } = JSON.parse(process.env.GOOGLE_CREDENTIALS).web;
+  const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+  oAuth2Client.setCredentials(tokens);
+
+  const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
+  const { data } = await calendar.calendarList.get({ calendarId: "primary" });
+  return data.timeZone || "UTC";
+}
+
     if (error) {
       // El usuario canceló la autorización
       return res.redirect("https://www.talochatbot.com/login"); // O la ruta que uses para login
@@ -68,15 +78,18 @@ router.get("/callback", async (req, res) => {
     const { data: profile } = await oauth2.userinfo.get();
 
     let user = await User.findOne({ email: profile.email });
-    if (!user) {
-      user = new User({
-        email: profile.email,
-        name: profile.name,
-        username: randomUsername,
-        password: randomPassword,
-        googleTokens: tokens,
-        status: "free",
-      });
+if (!user) {
+  const googleTimeZone = await getGoogleTimeZone(tokens);
+  user = new User({
+    email: profile.email,
+    name: profile.name,
+    username: randomUsername,
+    password: randomPassword,
+    googleTokens: tokens,
+    status: "free",
+    timeZone: googleTimeZone, // 🌐 guardamos zona horaria real
+    country: null,            // 🌍 opcional: pedir al usuario luego
+  });
       await user.save();
     } else {
       user.googleTokens = tokens;

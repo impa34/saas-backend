@@ -288,13 +288,14 @@ router.post("/:id/reply", async (req, res) => {
           if (events && events.length >= (selectedService?.capacidad || 1)) {
             reply = `Lo siento, no hay disponibilidad para "${serviceName}" en ese horario. ¿Quieres otra hora?`;
           } else {
-            const link = await addCalendarEvent({
-              tokens: bot.user.googleTokens,
-              summary: `Cita: ${serviceName}`,
-              description: `Cliente: Web\nServicio: ${serviceName}\nMensaje: "${message}"`,
-              durationMinutes: duration,
-              startTime,
-            });
+const link = await addCalendarEvent({
+  tokens: owner.googleTokens,
+  summary: `Cita: ${serviceName}`,
+  description: `Cliente: Web\nServicio: ${serviceName}\nDuración: ${duration} min\nMensaje: "${message}"\nRespuesta bot: "${reply}"`,
+  durationMinutes: duration,
+  startTime: startTime,
+  timeZone: owner.timeZone || "Europe/Madrid", // 👈 aquí
+});
 
             if (link) {
               // Email

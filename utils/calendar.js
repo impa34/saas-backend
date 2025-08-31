@@ -1,11 +1,13 @@
-import { google } from 'googleapis';
+// utils/calendarHelpers.js
+import { google } from "googleapis";
 
 export async function addCalendarEvent({ 
   tokens, 
   summary, 
   description, 
   durationMinutes = 30,
-  startTime // ✅ Nuevo parámetro opcional
+  startTime,
+  timeZone = "UTC", // 👈 ahora configurable
 }) {
   const { client_id, client_secret, redirect_uris } = JSON.parse(process.env.GOOGLE_CREDENTIALS).web;
 
@@ -19,48 +21,19 @@ export async function addCalendarEvent({
   const calendar = google.calendar({ version: "v3", auth: oAuth2Client });
 
   try {
-    let start, end;
-    
-    // ✅ Si se proporciona startTime, usarlo directamente
-    if (startTime) {
-      start = new Date(startTime);
-      end = new Date(start.getTime() + durationMinutes * 60000);
-    } else {
-      // Si no, intentar parsear del description (comportamiento original)
-      const parsed = parseDate(description, durationMinutes, 10);
-      if (!parsed) {
-        console.warn("❌ No se pudo interpretar una fecha válida");
-        return null;
-      }
-      start = parsed.start;
-      end = parsed.end;
-    }
+    const start = new Date(startTime);
+    const end = new Date(start.getTime() + durationMinutes * 60000);
 
-    // 1️⃣ Comprobar solapamientos
-    const existingEvents = await calendar.events.list({
-      calendarId: "primary",
-      timeMin: start.toISOString(),
-      timeMax: end.toISOString(),
-      singleEvents: true,
-      orderBy: "startTime"
-    });
-
-    if (existingEvents.data.items && existingEvents.data.items.length > 0) {
-      console.warn("⚠️ Conflicto: ya existe un evento en ese rango.");
-      return null;
-    }
-
-    // 2️⃣ Crear evento
     const event = {
       summary,
       description,
       start: {
         dateTime: start.toISOString(),
-        timeZone: "Europe/Madrid",
+        timeZone, // 👈 se usa la zona horaria real
       },
       end: {
         dateTime: end.toISOString(),
-        timeZone: "Europe/Madrid",
+        timeZone,
       },
     };
 
