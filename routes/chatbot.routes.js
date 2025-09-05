@@ -132,7 +132,7 @@ router.delete("/:id", async (req, res) => {
 });
 
 // Guardar el token de Telegram
-router.post("/:id/integrations/telegram", async (req, res) => {
+router.post("/:id/integrations/telegram", auth, async (req, res) => {
   try {
     console.log("🟢🟢🟢 INTEGRACIÓN TELEGRAM INICIADA 🟢🟢🟢");
     console.log("User ID:", req.user.userId);
