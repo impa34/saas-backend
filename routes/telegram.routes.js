@@ -1,6 +1,7 @@
 import express from "express";
 import axios from "axios";
 import Chatbot from "../models/Chatbot.js";
+import User from "../models/User.js"; // 👈 Importar el modelo User
 import { getGeminiReply } from "../utils/gemini.js";
 import Conversation from "../models/Conversation.js";
 import { parseDate } from "../utils/parseDate.js";
@@ -8,23 +9,51 @@ import { getCalendarEvents } from "../utils/getCalendarEvents.js";
 import { addCalendarEvent } from "../utils/calendar.js";
 import { sendEmail } from "../utils/sendEmail.js";
 import checkPlan from "../middleware/checkPlan.js";
-import auth from "../middleware/auth.js"
+import auth from "../middleware/auth.js";
 
 const router = express.Router();
-
-
 
 router.post("/webhook/:chatbotId", async (req, res) => {
   try {
     console.log("=== WEBHOOK RECIBIDO ===");
-    console.log("Chatbot ID:", req.params.chatbotId);
+    const chatbotId = req.params.chatbotId;
+    console.log("Chatbot ID:", chatbotId);
 
-     const allowedPlans = ["full", "lifetime"];
-    if (!bot.user || !allowedPlans.includes(bot.user.status)) {
-      console.error("❌ Plan insuficiente para el usuario:", bot.user?.status);
+    // 1. PRIMERO buscar el bot
+    const bot = await Chatbot.findById(chatbotId);
+    if (!bot) {
+      console.error("❌ Bot no encontrado con ID:", chatbotId);
+      return res.sendStatus(404);
+    }
+
+    console.log("Bot encontrado:", bot.name);
+
+    // 2. LUEGO buscar el usuario directamente (más confiable que populate)
+    const user = await User.findById(bot.user);
+    if (!user) {
+      console.error("❌ Usuario no encontrado para el bot");
       return res.sendStatus(403);
     }
-    const chatbotId = req.params.chatbotId;
+
+    console.log("Usuario del bot:", user.email);
+    console.log("Estado del usuario:", user.status);
+
+    // 3. VERIFICACIÓN DEL PLAN
+    const allowedPlans = ["full", "lifetime"];
+    const userStatus = user.status ? String(user.status).toLowerCase().trim() : "";
+    const isAllowed = allowedPlans.some(plan => userStatus.includes(plan));
+
+    console.log("Estado normalizado:", userStatus);
+    console.log("¿Plan permitido?:", isAllowed);
+
+    if (!isAllowed) {
+      console.error("❌ Plan insuficiente. User status:", userStatus);
+      return res.sendStatus(403);
+    }
+
+    console.log("✅ Plan verificado correctamente");
+
+    // 4. Resto del webhook...
     const message = req.body.message;
 
     if (!message) {
@@ -42,22 +71,13 @@ router.post("/webhook/:chatbotId", async (req, res) => {
     
     console.log("Chat ID:", chatId, "Texto:", text);
 
-    // Buscar el bot
-    const bot = await Chatbot.findById(chatbotId).populate("user");
-    if (!bot) {
-      console.error("❌ Bot no encontrado con ID:", chatbotId);
-      return res.sendStatus(500);
-    }
-    
-    console.log("Bot encontrado:", bot.name);
-
     // Guardar el chatId de Telegram
     if (!bot.telegramChatId) {
       bot.telegramChatId = chatId;
       await bot.save();
     }
 
-    // Guardar mensaje del usuario - CON VALIDACIÓN DE BOT ID
+    // Guardar mensaje del usuario
     if (bot._id) {
       await Conversation.create({ 
         bot: bot._id, 
@@ -123,12 +143,12 @@ router.post("/webhook/:chatbotId", async (req, res) => {
 
     console.log("Detección de cita:", citaOK);
     console.log("Servicio seleccionado:", selectedService);
-    console.log("User tiene GoogleTokens:", !!bot.user?.googleTokens);
+    console.log("User tiene GoogleTokens:", !!user.googleTokens);
 
-    if (citaOK && bot.user?.googleTokens) {
+    if (citaOK && user.googleTokens) {
       console.log("✅ Intentando crear evento en calendario...");
       
-      const owner = bot.user;
+      const owner = user; // Usar el usuario que ya tenemos
       const duration = selectedService ? parseInt(selectedService.duracion) || 30 : 30;
       const serviceName = selectedService ? selectedService.servicio : "Cita de cliente";
       const buffer = 10;
