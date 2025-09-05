@@ -151,8 +151,10 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
 
     // Validar el token con Telegram
     console.log("🔵 Validando token con Telegram...");
+
+    let telegramResponse;
     try {
-      const response = await axios.get(`https://api.telegram.org/bot${token}/getMe`, {
+      telegramResponse = await axios.get(`https://api.telegram.org/bot${token}/getMe`, {
         timeout: 5000
       });
       console.log("✅ Token válido:", response.data.result.username);
@@ -170,7 +172,7 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
     console.log("✅ Bot encontrado:", bot.name);
     
     bot.telegramToken = token;
-    bot.telegramBotUsername = response.data.result.username;
+    bot.telegramBotUsername = telegramResponse.data.result.username;
     await bot.save();
     console.log("✅ Token guardado en BD");
 
