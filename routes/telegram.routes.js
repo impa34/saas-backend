@@ -15,7 +15,11 @@ const router = express.Router();
 
 router.post("/webhook/:chatbotId", async (req, res) => {
   try {
-    console.log("=== WEBHOOK RECIBIDO ===");
+    console.log("🔵🔵🔵 WEBHOOK INICIADO - ¿Llegó aquí? 🔵🔵🔵");
+    console.log("URL completa:", req.originalUrl);
+    console.log("Método:", req.method);
+    console.log("Headers:", req.headers);
+    
     const chatbotId = req.params.chatbotId;
     console.log("Chatbot ID:", chatbotId);
 
