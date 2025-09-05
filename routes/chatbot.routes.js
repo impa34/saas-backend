@@ -288,10 +288,11 @@ router.post("/:id/reply", async (req, res) => {
       return undefined;
     }
 
-    const servicio = getField(selectedService, ["servicio", "Servicio", "nombre"]);
-    const precio = getField(selectedService, ["precio", "Precio", "precio€"]);
-    const duracion = getField(selectedService, ["duracion", "Duración", "tiempo"]);
-    const capacidad = getField(selectedService, ["capacidad", "Capacidad"]);
+const servicio = selectedService?.servicio;
+const precio = selectedService?.precio;
+const duracion = selectedService?.duracion;
+const capacidad = selectedService?.capacidad;
+
     // --------------------------
     // 3. Si es sobre precio/duración → responder directo
     // --------------------------
@@ -299,11 +300,12 @@ router.post("/:id/reply", async (req, res) => {
       const priceRegex = /precio|cuesta|cost|cuánto|valor/i;
       const durationRegex = /duración|dura|tiempo|horas|minutos/i;
 
-      if (priceRegex.test(message)) {
-        reply = `${selectedService.servicio} cuesta ${selectedService.precio} € y dura ${selectedService.duracion} minutos.`;
-      } else if (durationRegex.test(message)) {
-        reply = `${selectedService.servicio} dura ${selectedService.duracion} minutos y cuesta ${selectedService.precio} €.`;
-      }
+if (priceRegex.test(message)) {
+  reply = `${servicio} cuesta ${precio} € y dura ${duracion} minutos.`;
+} else if (durationRegex.test(message)) {
+  reply = `${servicio} dura ${duracion} minutos y cuesta ${precio} €.`;
+}
+
     }
 
     // --------------------------
