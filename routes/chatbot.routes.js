@@ -134,54 +134,68 @@ router.delete("/:id", async (req, res) => {
 // Guardar el token de Telegram
 router.post("/:id/integrations/telegram", auth, checkPlan(), async (req, res) => {
   try {
+    console.log("🟢🟢🟢 INTEGRACIÓN TELEGRAM INICIADA 🟢🟢🟢");
+    console.log("User ID:", req.user.userId);
+    console.log("User status:", req.user.status);
+    
     const { token } = req.body;
     const chatbotId = req.params.id;
 
+    console.log("Token recibido:", token ? "PRESENTE" : "FALTANTE");
+    console.log("Chatbot ID:", chatbotId);
+
     if (!token) {
+      console.error("❌ Token faltante");
       return res.status(400).json({ error: "El token de Telegram es obligatorio" });
     }
 
     // Validar el token con Telegram
-    const response = await axios.get(`https://api.telegram.org/bot${token}/getMe`);
-    if (!response.data.ok) {
+    console.log("🔵 Validando token con Telegram...");
+    try {
+      const response = await axios.get(`https://api.telegram.org/bot${token}/getMe`, {
+        timeout: 5000
+      });
+      console.log("✅ Token válido:", response.data.result.username);
+    } catch (tokenError) {
+      console.error("❌ Token inválido:", tokenError.message);
       return res.status(400).json({ error: "Token de Telegram inválido" });
     }
 
-    // ✅ CORRECCIÓN: Cambiar 'chatbot' por 'bot' para ser consistente
-    console.log("Chatbot ID recibido:", chatbotId);
-    console.log("Tipo de ID:", typeof chatbotId);
-
-    // Verifica que el formato sea correcto
     const bot = await Chatbot.findById(chatbotId).populate("user");
     if (!bot) {
-      console.error("❌ NO SE ENCUENTRA EL BOT - Verifica el ID:");
-      console.error("ID buscado:", chatbotId);
-      console.error("Es ObjectId válido?", mongoose.Types.ObjectId.isValid(chatbotId));
+      console.error("❌ Bot no encontrado");
       return res.status(404).json({ error: "Chatbot no encontrado" });
     }
 
-    // ✅ CORRECCIÓN: Usar 'bot' en lugar de 'chatbot'
+    console.log("✅ Bot encontrado:", bot.name);
+    
     bot.telegramToken = token;
     bot.telegramBotUsername = response.data.result.username;
     await bot.save();
+    console.log("✅ Token guardado en BD");
 
-    // Webhook URL con chatbotId
+    // Webhook URL
     const webhookUrl = `https://saas-backend-xrkb.onrender.com/api/telegram/webhook/${chatbotId}`;
-    const webhookRes = await axios.get(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}`);
-
-    if (!webhookRes.data.ok) {
+    console.log("🔵 Configurando webhook:", webhookUrl);
+    
+    try {
+      const webhookRes = await axios.get(`https://api.telegram.org/bot${token}/setWebhook?url=${webhookUrl}`, {
+        timeout: 5000
+      });
+      console.log("✅ Webhook configurado:", webhookRes.data);
+    } catch (webhookError) {
+      console.error("❌ Error configurando webhook:", webhookError.message);
       return res.status(500).json({ error: "No se pudo registrar el webhook en Telegram" });
     }
 
     res.json({
       success: true,
-      message: "Token de Telegram guardado y webhook registrado correctamente",
-      bot: response.data.result,
-      webhook: webhookRes.data.result
+      message: "Token de Telegram guardado y webhook registrado correctamente"
     });
 
   } catch (err) {
-    console.error("Error al guardar token de Telegram:", err.message);
+    console.error("❌ Error completo en integración:", err.message);
+    console.error("Stack:", err.stack);
     res.status(500).json({ error: "Error al guardar la integración con Telegram" });
   }
 });
