@@ -157,7 +157,7 @@ router.post("/:id/integrations/telegram", auth, async (req, res) => {
       telegramResponse = await axios.get(`https://api.telegram.org/bot${token}/getMe`, {
         timeout: 5000
       });
-      console.log("✅ Token válido:", response.data.result.username);
+      console.log("✅ Token válido:", telegramResponse.data.result.username);
     } catch (tokenError) {
       console.error("❌ Token inválido:", tokenError.message);
       return res.status(400).json({ error: "Token de Telegram inválido" });
