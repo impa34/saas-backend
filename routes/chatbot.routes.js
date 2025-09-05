@@ -28,18 +28,6 @@ function normalizeKey(key) {
     .replace(/[úü]/g, "u");
 }
 
-const file = xlsx.readFile("servicios.xlsx");
-const sheet = file.Sheets[file.SheetNames[0]];
-const rows = xlsx.utils.sheet_to_json(sheet);
-
-// Normalizamos
-const dataset = rows.map(row => {
-  const normalized = {};
-  for (const [key, value] of Object.entries(row)) {
-    normalized[normalizeKey(key)] = value;
-  }
-  return normalized;
-});
 
 // dataset[0] ahora tiene { servicio: "Corte de pelo", duracion: 30, capacidad: 1, precio: 15 }
 
@@ -71,6 +59,19 @@ router.post("/:id/upload", auth, upload.single("file"), async (req, res) => {
       const sheet = workbook.Sheets[sheetName];
       data = xlsx.utils.sheet_to_json(sheet);
     }
+
+    const file = xlsx.readFile("servicios.xlsx");
+const sheet = file.Sheets[file.SheetNames[0]];
+const rows = xlsx.utils.sheet_to_json(sheet);
+
+// Normalizamos
+const dataset = rows.map(row => {
+  const normalized = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[normalizeKey(key)] = value;
+  }
+  return normalized;
+});
     const bot = await Chatbot.findByIdAndUpdate(
       req.params.id,
       { dataset: data },
