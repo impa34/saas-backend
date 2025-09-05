@@ -16,7 +16,6 @@ import { Parser } from "json2csv";
 import { getCalendarEvents } from "../utils/getCalendarEvents.js";
 import { parseDate } from "../utils/parseDate.js";
 import checkPlan from "../middleware/checkPlan.js";
-import xlsx from "xlsx";
 
 function normalizeKey(key) {
   return key
