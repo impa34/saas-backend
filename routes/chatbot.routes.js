@@ -301,9 +301,9 @@ const capacidad = selectedService?.capacidad;
       const durationRegex = /duración|dura|tiempo|horas|minutos/i;
 
 if (priceRegex.test(message)) {
-  reply = `${servicio} cuesta ${precio} € y dura ${duracion} minutos.`;
+  reply = `${servicio} cuesta ${precio} € y dura ${duracion}`;
 } else if (durationRegex.test(message)) {
-  reply = `${servicio} dura ${duracion} minutos y cuesta ${precio} €.`;
+  reply = `${servicio} dura ${duracion} y cuesta ${precio} €.`;
 }
 
     }
