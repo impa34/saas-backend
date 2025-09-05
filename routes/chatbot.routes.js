@@ -16,6 +16,34 @@ import { Parser } from "json2csv";
 import { getCalendarEvents } from "../utils/getCalendarEvents.js";
 import { parseDate } from "../utils/parseDate.js";
 import checkPlan from "../middleware/checkPlan.js";
+import xlsx from "xlsx";
+
+function normalizeKey(key) {
+  return key
+    .toLowerCase()
+    .replace(/\s+/g, "")       // quita espacios
+    .replace(/[áä]/g, "a")
+    .replace(/[éë]/g, "e")
+    .replace(/[íï]/g, "i")
+    .replace(/[óö]/g, "o")
+    .replace(/[úü]/g, "u");
+}
+
+const file = xlsx.readFile("servicios.xlsx");
+const sheet = file.Sheets[file.SheetNames[0]];
+const rows = xlsx.utils.sheet_to_json(sheet);
+
+// Normalizamos
+const dataset = rows.map(row => {
+  const normalized = {};
+  for (const [key, value] of Object.entries(row)) {
+    normalized[normalizeKey(key)] = value;
+  }
+  return normalized;
+});
+
+// dataset[0] ahora tiene { servicio: "Corte de pelo", duracion: 30, capacidad: 1, precio: 15 }
+
 
 const upload = multer({ dest: "uploads/" });
 
@@ -242,6 +270,7 @@ router.post("/:id/reply", async (req, res) => {
           selectedService = bot.dataset.find(row =>
             row.servicio && row.servicio.toLowerCase().includes(serviceType)
           );
+          
           break;
         }
       }
@@ -253,7 +282,17 @@ router.post("/:id/reply", async (req, res) => {
     }
 
     console.log("Servicio detectado:", selectedService?.servicio);
+    function getField(obj, keys) {
+      for (const k of keys) {
+        if (obj && obj[k] !== undefined) return obj[k];
+      }
+      return undefined;
+    }
 
+    const servicio = getField(selectedService, ["servicio", "Servicio", "nombre"]);
+    const precio = getField(selectedService, ["precio", "Precio", "precio€"]);
+    const duracion = getField(selectedService, ["duracion", "Duración", "tiempo"]);
+    const capacidad = getField(selectedService, ["capacidad", "Capacidad"]);
     // --------------------------
     // 3. Si es sobre precio/duración → responder directo
     // --------------------------
