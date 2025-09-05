@@ -39,11 +39,11 @@ router.post("/:id/upload", auth, upload.single("file"), async (req, res) => {
 
   if (!file) return res.status(404).json({ message: "File not found" });
 
-  let data = [];
-
   try {
+    let rows = [];
+
     if (file.mimetype === "text/csv") {
-      const rows = await new Promise((resolve, reject) => {
+      rows = await new Promise((resolve, reject) => {
         const results = [];
         fs.createReadStream(file.path)
           .pipe(csv())
@@ -51,40 +51,39 @@ router.post("/:id/upload", auth, upload.single("file"), async (req, res) => {
           .on("end", () => resolve(results))
           .on("error", reject);
       });
-      fs.unlinkSync(file.path);
-      data = rows;
     } else {
       const workbook = xlsx.readFile(file.path);
       const sheetName = workbook.SheetNames[0];
       const sheet = workbook.Sheets[sheetName];
-      data = xlsx.utils.sheet_to_json(sheet);
+      rows = xlsx.utils.sheet_to_json(sheet);
     }
 
-    const file = xlsx.readFile("servicios.xlsx");
-const sheet = file.Sheets[file.SheetNames[0]];
-const rows = xlsx.utils.sheet_to_json(sheet);
+    fs.unlinkSync(file.path);
 
-// Normalizamos
-const dataset = rows.map(row => {
-  const normalized = {};
-  for (const [key, value] of Object.entries(row)) {
-    normalized[normalizeKey(key)] = value;
-  }
-  return normalized;
-});
+    // 🔹 Normalizamos los keys del dataset
+    const dataset = rows.map(row => {
+      const normalized = {};
+      for (const [key, value] of Object.entries(row)) {
+        normalized[normalizeKey(key)] = value;
+      }
+      return normalized;
+    });
+
+    // 🔹 Guardamos el dataset normalizado en la base de datos
     const bot = await Chatbot.findByIdAndUpdate(
       req.params.id,
-      { dataset: data },
+      { dataset },
       { new: true }
     );
     if (!bot) return res.status(404).json({ message: "Bot not found" });
 
-    res.json({ message: "Excel processed", data });
+    res.json({ message: "Excel processed", data: dataset });
   } catch (e) {
     console.error(e);
     return res.status(500).json({ message: "Error uploading file" });
   }
 });
+
 
 router.get("/:id", async (req, res) => {
   try {
