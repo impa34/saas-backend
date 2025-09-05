@@ -13,11 +13,16 @@ import auth from "../middleware/auth.js"
 const router = express.Router();
 
 
-router.post("/webhook/:chatbotId",auth, checkPlan(), async (req, res) => {
+router.post("/webhook/:chatbotId", async (req, res) => {
   try {
     console.log("=== WEBHOOK RECIBIDO ===");
     console.log("Chatbot ID:", req.params.chatbotId);
-    
+
+     const allowedPlans = ["full", "lifetime"];
+    if (!bot.user || !allowedPlans.includes(bot.user.status)) {
+      console.error("❌ Plan insuficiente para el usuario:", bot.user?.status);
+      return res.sendStatus(403);
+    }
     const chatbotId = req.params.chatbotId;
     const message = req.body.message;
 
